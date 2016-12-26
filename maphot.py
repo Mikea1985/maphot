@@ -31,7 +31,7 @@ from trippy import psf, pill, psfStarChooser, scamp, MCMCfit
 from stsci import numdisplay
 
 
-def trimCatalog(cat, dcut, mcut, snrcut, shapecut):
+def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut):
   """trimCatalog trims the SExtractor catalogue of non-roundish things,
   really bright things and things that are near other things.
   cat = the full catalogue from SExtractor.
@@ -45,7 +45,7 @@ def trimCatalog(cat, dcut, mcut, snrcut, shapecut):
     try:
       a = int(cat['XWIN_IMAGE'][ii])
       b = int(cat['YWIN_IMAGE'][ii])
-      m = np.max(data[b - 4:b + 5, a - 4:a + 5])
+      m = np.max(somedata[b - 4:b + 5, a - 4:a + 5])
     except:
       pass
     xi = cat['XWIN_IMAGE'][ii]
@@ -67,8 +67,48 @@ def trimCatalog(cat, dcut, mcut, snrcut, shapecut):
   outcat = {}
   for ii in cat:
     outcat[ii] = cat[ii][good]
-#    outcat[ii] = cat[ii]
   return outcat
+
+
+def getCatalog(file_start):
+  """getCatalog checks whether a catalog file already exists.
+  If it does, it is read in. If not, it runs SExtractor to create it.
+  """
+  try:
+    fullcatalog = scamp.getCatalog(file_start + '_fits.cat',
+                                   paramFile='def.param')
+  except IOError:
+    try:
+      scamp.makeParFiles.writeSex(file_start + '_fits.sex', minArea=3.0,
+                                  threshold=5.0, zpt=26.0, aperture=20.,
+                                  min_radius=2.0, catalogType='FITS_LDAC',
+                                  saturate=55000)
+      scamp.makeParFiles.writeConv()
+      scamp.makeParFiles.writeParam(numAps=1)
+      scamp.makeParFiles.writeSex(file_start + '_ascii.sex', minArea=3.0,
+                                  threshold=5.0, zpt=26.0, aperture=20.,
+                                  min_radius=2.0, catalogType='ASCII',
+                                  saturate=55000)
+      scamp.makeParFiles.writeConv()
+      scamp.makeParFiles.writeParam(numAps=1)
+      scamp.runSex(file_start + '_fits.sex', inputFile,
+                   options={'CATALOG_NAME': file_start + '_fits.cat'})
+      scamp.runSex(file_start + '_ascii.sex', inputFile,
+                   options={'CATALOG_NAME': file_start + '_ascii.cat'})
+      fullcatalog = scamp.getCatalog(file_start + '_fits.cat',
+                                     paramFile='def.param')
+    except IOError as error:
+      print("IOError: ", error)
+      print("You have almost certainly forgotten to activate Ureka!")
+    raise
+  except UnboundLocalError:
+    print("\nData error occurred!\n")
+    raise
+  ncat = len(fullcatalog['XWIN_IMAGE'])
+  print("\n", ncat, " catalog stars\n")
+  outfile.write("\n{} catalog stars\n".format(ncat))
+  return fullcatalog
+
 
 useage = 'maphot -c <coordsfile> -f <fitsfile> -v False '\
          + '-. True -o False -r True -a 0.7'
@@ -161,37 +201,7 @@ outfile.write("\nWorking on {}.\n".format(inputFile))
 print("\nMJD = ", MJD, "\n")
 outfile.write("\nMJD = {}\n".format(MJD))
 
-try:
-  fullcat = scamp.getCatalog(inputName + '_fits.cat', paramFile='def.param')
-except IOError:
-  try:
-    scamp.makeParFiles.writeSex(inputName + '_fits.sex', minArea=3.0,
-                                threshold=5.0, zpt=26.0, aperture=20.,
-                                min_radius=2.0, catalogType='FITS_LDAC',
-                                saturate=55000)
-    scamp.makeParFiles.writeConv()
-    scamp.makeParFiles.writeParam(numAps=1)
-    scamp.makeParFiles.writeSex(inputName + '_ascii.sex', minArea=3.0,
-                                threshold=5.0, zpt=26.0, aperture=20.,
-                                min_radius=2.0, catalogType='ASCII',
-                                saturate=55000)
-    scamp.makeParFiles.writeConv()
-    scamp.makeParFiles.writeParam(numAps=1)
-    scamp.runSex(inputName + '_fits.sex', inputFile,
-                 options={'CATALOG_NAME': inputName + '_fits.cat'})
-    scamp.runSex(inputName + '_ascii.sex', inputFile,
-                 options={'CATALOG_NAME': inputName + '_ascii.cat'})
-    fullcat = scamp.getCatalog(inputName + '_fits.cat', paramFile='def.param')
-  except IOError as error:
-    print("IOError: ", error)
-    print("You have almost certainly forgotten to activate Ureka!")
-    raise
-except UnboundLocalError:
-  print("\nData error occurred!\n")
-  raise
-ncat = len(fullcat['XWIN_IMAGE'])
-print("\n", ncat, " catalog stars\n")
-outfile.write("\n{} catalog stars\n".format(ncat))
+fullcat = getCatalog(inputName)
 
 dist = ((fullcat['XWIN_IMAGE'] - x0) ** 2
         + (fullcat['YWIN_IMAGE'] - y0) ** 2) ** 0.5
@@ -215,8 +225,8 @@ ncat_psf = 0
 ncat_phot = 0
 i = 0
 while ncat_psf < 150:
-  catalog_psf = trimCatalog(fullcat, 30, 70000, 50 - i, 1.15 + i / 100.)
-  catalog_phot = trimCatalog(fullcat, 30, 70000, 30 - i, 1.15 + i / 100.)
+  catalog_psf = trimCatalog(fullcat, data, 30, 70000, 50 - i, 1.15 + i / 100.)
+  catalog_phot = trimCatalog(fullcat, data, 30, 70000, 30 - i, 1.15 + i / 100.)
   ncat_psf = len(catalog_psf['XWIN_IMAGE'])
   ncat_phot = len(catalog_phot['XWIN_IMAGE'])
   i += 1
