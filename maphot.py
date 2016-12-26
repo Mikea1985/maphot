@@ -110,14 +110,36 @@ def getCatalog(file_start):
   return fullcatalog
 
 
+def runMCMCCentroid(centPSF, centData, centxt, centyt, centm,
+                    centbg, centdtransx, centdtransy):
+  """runMCMCCentroid runs an MCMC centroiding, fitting the TSF to the data.
+  Returns the fitted centoid co-ordinates.
+  """
+  print("Should I be doing this?")
+  print("MCMC-fitting TSF to the moving object")
+  centfitter = MCMCfit.MCMCfitter(centPSF, centData)
+  centfitter.fitWithModelPSF(centdtransx + centxt - int(centxt),
+                             centdtransy + centyt - int(centyt),
+                             m_in=centm / repfact ** 2.,
+                             fitWidth=10, nWalkers=30,
+                             nBurn=10, nStep=20, bg=centbg, useLinePSF=True,
+                             verbose=True, useErrorMap=False)
+  (centfitPars, centfitRange) = centfitter.fitResults(0.67)
+# Reverse the above coordinate transformation:
+  xcentroid, ycentroid = centfitPars[0:2] \
+                         - [dtransx, dtransy] \
+                         + [int(centxt), int(centyt)] # noqa
+  return xcentroid, ycentroid, centfitPars, centfitRange
+
+
 useage = 'maphot -c <coordsfile> -f <fitsfile> -v False '\
          + '-. True -o False -r True -a 0.7'
 inputFile = 'a100.fits'  # Change with '-f <filename>' flag
 coordsfile = 'coords.in'  # Change with '-c <coordsfile>' flag
 verbose = False  # Change with '-v True' or '--verbose True'
-centroid = True  # Change with '-. False' or  --centroid False'
+centroid = False  # Change with '-. False' or  --centroid False'
 overrideSEx = False  # Change with '-o True' or '--override True'
-remove = True  # Change with '-r False' or '--remove False'
+remove = False  # Change with '-r False' or '--remove False'
 aprad = -42.
 repfact = 10
 pxscale = 1.0
@@ -335,37 +357,50 @@ when the sky has a gradient (near something bright).
 This fit is also used to remove the object from the image, later.
 fit takes time proportional to nWalkers*(2+nBurn+nStep).
 '''
-if centroid or remove:
-  print("MCMC-fitting TSF to the moving object")
-  fitter = MCMCfit.MCMCfitter(goodPSF, Data)
-  fitter.fitWithModelPSF(dtransx + xt - int(xt), dtransy + yt - int(yt),
-                         m_in=m_obj / repfact ** 2., fitWidth=10, nWalkers=30,
-                         nBurn=10, nStep=20, bg=bgmedian, useLinePSF=True,
-                         verbose=True, useErrorMap=False)
-  xt0, yt0 = xt, yt
-  (fitPars, fitRange) = fitter.fitResults(0.67)
-  xcent, ycent = fitPars[0:2] - [dtransx, dtransy] \
-                 + [int(xt0), int(yt0)]  # above conversion, backwards # noqa
-if centroid:
+xt0, yt0 = xt, yt
+while True:
   (z1, z2) = numdisplay.zscale.zscale(Zoom)
   normer = interval.ManualInterval(z1, z2)
   pyl.imshow(normer(Zoom), origin='lower')
   pyl.plot([zx + x0 - int(xt0)], [zy + y0 - int(yt0)], 'k*', ms=10)
   pyl.plot([zx + xt0 - int(xt0)], [zy + yt0 - int(yt0)], 'w+', ms=10, mew=2)
-  pyl.plot([zx + xcent - int(xt0)],
-           [zy + ycent - int(yt0)], 'gx', ms=10, mew=2)
-  print("Estimated    (black)  x,y = ", x0, y0)
-  print("SExtractor   (white)  x,y = ", xt, yt)
-  print("MCMCcentroid (green)  x,y = ", xcent, ycent)
-  pyl.show()
-  yn = input('Accept MCMC centroid (m or c), '
-             + 'SExtractor centroid (S), or estimate (e)? ')
-  if ('e' in yn) or ('E' in yn):
-    xt, yt = x0, y0
-  elif ('m' in yn) or ('M' in yn) or ('c' in yn) or ('C' in yn):
-    xt, yt = xcent, ycent
+  if centroid or remove:
+    print("Should I be doing this?")
+    xcent, ycent, fitPars, fitRange = runMCMCCentroid(goodPSF, Data, xt, yt,
+                                                      m_obj, bgmedian,
+                                                      dtransx, dtransy)
+    pyl.plot([zx + xcent - int(xt0)],
+             [zy + ycent - int(yt0)], 'gx', ms=10, mew=2)
+    print("Estimated    (black)  x,y = ", x0, y0)
+    print("SExtractor   (white)  x,y = ", xt, yt)
+    print("MCMCcentroid (green)  x,y = ", xcent, ycent)
+    pyl.show()
+    yn = input('Accept MCMC centroid (m or c), '
+               + 'SExtractor centroid (S), or estimate (e)? ')
+    if ('e' in yn) or ('E' in yn):
+      xt, yt = x0, y0
+      break
+    elif ('m' in yn) or ('M' in yn) or ('c' in yn) or ('C' in yn):
+      xt, yt = xcent, ycent
+      break
+    else:
+      yn = 'S'  # else do nothing, use SExtractor co-ordinates.
+      break
   else:
-    yn = 'S'  # else do nothing, use SExtractor co-ordinates.
+    print("Estimated    (black)  x,y = ", x0, y0)
+    print("SExtractor   (white)  x,y = ", xt, yt)
+    pyl.show()
+    yn = input('Accept '
+               + 'SExtractor centroid (S), or estimate (e), '
+               + ' or recentroid using MCMC (m or c)? ')
+    if ('e' in yn) or ('E' in yn):
+      xt, yt = x0, y0
+      break
+    elif ('m' in yn) or ('M' in yn) or ('c' in yn) or ('C' in yn):
+      centroid = True
+    else:
+      yn = 'S'  # else do nothing, use SExtractor co-ordinates.
+      break
 
 
 print('\nPhotometry of moving object\n')
@@ -432,6 +467,7 @@ if centroid and remove and (('e' in yn) or ('E' in yn) or
                       np.min([naxis2 - 1, int(yt) + 5]),
                       np.max([0, int(xt) - 5]):
                       np.min([naxis1 - 1, int(xt) + 5])])
+  print("Should I be doing this?")
   fitter = MCMCfit.MCMCfitter(goodPSF, Data)
   fitter.fitWithModelPSF(dtransx + xt - int(xt), dtransy + yt - int(yt),
                          m_in=m_obj / repfact ** 2., fitWidth=2, nWalkers=10,
