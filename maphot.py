@@ -29,6 +29,8 @@ from astropy.visualization import interval
 import pylab as pyl
 from trippy import psf, pill, psfStarChooser, scamp, MCMCfit
 from stsci import numdisplay
+__author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
+              'mike.alexandersen@alumni.ubc.ca)')
 
 
 def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut):
@@ -70,7 +72,7 @@ def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut):
   return outcat
 
 
-def getCatalog(file_start):
+def getCatalogue(file_start):
   """getCatalog checks whether a catalog file already exists.
   If it does, it is read in. If not, it runs SExtractor to create it.
   """
@@ -91,16 +93,16 @@ def getCatalog(file_start):
                                   saturate=55000)
       scamp.makeParFiles.writeConv()
       scamp.makeParFiles.writeParam(numAps=1)
-      scamp.runSex(file_start + '_fits.sex', inputFile,
+      scamp.runSex(file_start + '_fits.sex', file_start + '.fits',
                    options={'CATALOG_NAME': file_start + '_fits.cat'})
-      scamp.runSex(file_start + '_ascii.sex', inputFile,
+      scamp.runSex(file_start + '_ascii.sex', file_start + '.fits',
                    options={'CATALOG_NAME': file_start + '_ascii.cat'})
       fullcatalog = scamp.getCatalog(file_start + '_fits.cat',
                                      paramFile='def.param')
     except IOError as error:
       print("IOError: ", error)
       print("You have almost certainly forgotten to activate Ureka!")
-    raise
+      raise
   except UnboundLocalError:
     print("\nData error occurred!\n")
     raise
@@ -132,56 +134,84 @@ def runMCMCCentroid(centPSF, centData, centxt, centyt, centm,
   return xcentroid, ycentroid, centfitPars, centfitRange
 
 
-useage = 'maphot -c <coordsfile> -f <fitsfile> -v False '\
-         + '-. True -o False -r True -a 0.7'
-inputFile = 'a100.fits'  # Change with '-f <filename>' flag
-coordsfile = 'coords.in'  # Change with '-c <coordsfile>' flag
-verbose = False  # Change with '-v True' or '--verbose True'
-centroid = False  # Change with '-. False' or  --centroid False'
-overrideSEx = False  # Change with '-o True' or '--override True'
-remove = False  # Change with '-r False' or '--remove False'
-aprad = -42.
-repfact = 10
-pxscale = 1.0
-roundAperRad = 1.4
+def getArguments(sysargv):
+  """Get arguments given when this is called from a command line"""
+  AinputFile = 'a100.fits'  # Change with '-f <filename>' flag
+  Acoordsfile = 'coords.in'  # Change with '-c <coordsfile>' flag
+  Averbose = False  # Change with '-v True' or '--verbose True'
+  Acentroid = False  # Change with '-. False' or  --centroid False'
+  AoverrideSEx = False  # Change with '-o True' or '--override True'
+  Aremove = False  # Change with '-r False' or '--remove False'
+  Aaprad = -42.
+  Arepfact = 10
+  Apxscale = 1.0
+  AroundAperRad = 1.4
+  try:
+    options, dummy = getopt.getopt(sysargv[1:], "f:c:v:.:o:r:a:h:",
+                                   ["ifile=", "coords=", "verbose=",
+                                    "centroid=", "overrideSEx=",
+                                    "remove=", "aprad="])
+    for opt, arg in options:
+      if (opt in ("-v", "-verbose", "-.", "--centroid", "-o", "--overrideSEx",
+                  "-r", "--remove")):
+        if arg == '0' or arg == 'False':
+          arg = False
+        elif arg == '1' or arg == 'True':
+          arg = True
+        else:
+          print(opt, arg, np.array([arg]).dtype)
+          raise TypeError("-v -. -o -r flags must be followed by " +
+                          "0/False/1/True")
+      if opt == '-h':
+        print(useage)
+      elif opt in ('-f', '--ifile'):
+        AinputFile = arg
+      elif opt in ('-c', '--coords'):
+        Acoordsfile = arg
+      elif opt in ('-v', '--verbose'):
+        Averbose = arg
+      elif opt in ('-.', '--centroid'):
+        Acentroid = arg
+      elif opt in ('-o', '--overrideSEx'):
+        AoverrideSEx = arg
+      elif opt in ('-r', '--remove'):
+        Aremove = arg
+      elif opt in ('-a', '--aprad'):
+        Aaprad = float(arg)
+  except TypeError as error:
+    print(error)
+    sys.exit()
+  except getopt.GetoptError as error:
+    print(" Input ERROR! ")
+    print(useage)
+    sys.exit(2)
+  return (AinputFile, Acoordsfile, Averbose, Acentroid,
+          AoverrideSEx, Aremove, Aaprad, Arepfact, Apxscale, AroundAperRad)
 
-try:
-  opts, args = getopt.getopt(sys.argv[1:], "f:c:v:.:o:r:a:h:",
-                             ["ifile=", "coords=", "verbose=", "centroid=",
-                              "overrideSEx=", "remove=", "aprad="])
-  for opt, arg in opts:
-    if (opt in ("-v", "-verbose", "-.", "--centroid", "-o", "--overrideSEx",
-                "-r", "--remove")):
-      if arg == '0' or arg == 'False':
-        arg = False
-      elif arg == '1' or arg == 'True':
-        arg = True
-      else:
-        print(opt, arg, np.array([arg]).dtype)
-        raise TypeError("-v -. -o -r flags must be followed by 0/False/1/True")
-    if opt == '-h':
-      print(useage)
-    elif opt in ('-f', '--ifile'):
-      inputFile = arg
-    elif opt in ('-c', '--coords'):
-      coordsfile = arg
-    elif opt in ('-v', '--verbose'):
-      verbose = arg
-    elif opt in ('-.', '--centroid'):
-      centroid = arg
-    elif opt in ('-o', '--overrideSEx'):
-      overrideSEx = arg
-    elif opt in ('-r', '--remove'):
-      remove = arg
-    elif opt in ('-a', '--aprad'):
-      aprad = float(arg)
-except TypeError as error:
-  print(error)
-  sys.exit()
-except getopt.GetoptError as error:
-  print(" Input ERROR! ")
-  print(useage)
-  sys.exit(2)
+
+def findTNO(xzero, yzero):
+  """Finds the nearest catalogue entry to the estimated location."""
+  dist = ((fullcat['XWIN_IMAGE'] - xzero) ** 2
+          + (fullcat['YWIN_IMAGE'] - y0) ** 2) ** 0.5
+  args = np.argsort(dist)
+  print("\n x0, y0 = ", xzero, yzero, "\n")
+  outfile.write("\nx0, y0 = {}, {}\n".format(xzero, yzero))
+  xtno = fullcat['XWIN_IMAGE'][args][0]
+  ytno = fullcat['YWIN_IMAGE'][args][0]
+  if (xtno - xzero) ** 2 + (ytno - yzero) ** 2 > 36:
+    print("\n   WARNING! Object not found at", xzero, yzero, "\n")
+    outfile.write("\n   WARNING! Object not found at {}, {}\n".format(xzero,
+                                                                      yzero))
+    xtno, ytno = xzero, yzero
+  return xtno, yt
+
+
+###############################################################################
+
+useage = 'maphot -c <coordsfile> -f <fitsfile> -v False '\
+         + '-. False -o False -r False -a 0.7'
+(inputFile, coordsfile, verbose, centroid, overrideSEx, remove,
+ aprad, repfact, pxscale, roundAperRad) = getArguments(sys.argv)
 
 print("ifile =", inputFile, ", coords =", coordsfile, ", verbose =", verbose,
       ", centroid =", centroid, ", overrideSEx =", overrideSEx,
@@ -223,22 +253,12 @@ outfile.write("\nWorking on {}.\n".format(inputFile))
 print("\nMJD = ", MJD, "\n")
 outfile.write("\nMJD = {}\n".format(MJD))
 
-fullcat = getCatalog(inputName)
+fullcat = getCatalogue(inputName)
 
-dist = ((fullcat['XWIN_IMAGE'] - x0) ** 2
-        + (fullcat['YWIN_IMAGE'] - y0) ** 2) ** 0.5
-args = np.argsort(dist)
-print("\n x0, y0 = ", x0, y0, "\n")
-outfile.write("\nx0, y0 = {}, {}\n".format(x0, y0))
 if overrideSEx:
   xt, yt = x0, y0
 else:
-  xt = fullcat['XWIN_IMAGE'][args][0]
-  yt = fullcat['YWIN_IMAGE'][args][0]
-  if (xt - x0) ** 2 + (yt - y0) ** 2 > 36:
-    print("\n   WARNING! Object not found at", x0, y0, "\n")
-    outfile.write("\n   WARNING! Object not found at {}, {}\n".format(x0, y0))
-    xt, yt = x0, y0
+  xt, yt = findTNO(x0, y0)
 
 print("xt, yt = ", xt, yt, "\n")
 outfile.write("xt, yt = {}, {}\n".format(xt, yt))
