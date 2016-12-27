@@ -130,7 +130,7 @@ def runMCMCCentroid(centPSF, centData, centxt, centyt, centm,
 # Reverse the above coordinate transformation:
   xcentroid, ycentroid = centfitPars[0:2] \
                          - [dtransx, dtransy] \
-                         + [int(centxt), int(centyt)] # noqa
+                         + [int(centxt), int(centyt)]  # noqa
   return xcentroid, ycentroid, centfitPars, centfitRange
 
 
