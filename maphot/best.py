@@ -27,22 +27,6 @@ __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
 
 
-def findBestImage(imageArray):
-  """findBestImage finds the best image among a list.
-  Not yet tested.
-  """
-  zeros = np.zeros(len(imageArray))
-  for frameID in imageArray:
-    hans = pyf.open(frameID + '.fits')
-    headers = hans[0].header
-    zeros = headers['MAGZERO']
-  bestzeroid = np.argmax(zeros)
-  bestfullcat = getCatalogue(imageArray[bestzeroid])
-  return imageArray[bestzeroid], bestfullcat
-
-#bestImage, bestCatalogue = findBestImage(['a' + str(ii)
-#                                          for ii in range(100, 123)])
-
 def getCatalogue(file_start):
   """getCatalog checks whether a catalog file already exists.
   If it does, it is read in. If not, it runs SExtractor to create it.
@@ -82,6 +66,69 @@ def getCatalogue(file_start):
   print("\n", ncat, " catalog stars\n")
   outfile.write("\n{} catalog stars\n".format(ncat))
   return fullcatalog
+
+
+def findBestImage(imageArray):
+  """findBestImage finds the best image among a list.
+  Not yet tested.
+  """
+  zeros = np.zeros(len(imageArray))
+  for ii, frameID in enumerate(imageArray):
+    hans = pyf.open(frameID + '.fits')
+    headers = hans[0].header
+    zeros[ii] = headers['MAGZERO']
+  bestzeroid = np.argmax(zeros)
+  bestfullcat = getCatalogue(imageArray[bestzeroid])
+  return imageArray[bestzeroid], bestfullcat
+#bestImage, bestCatalogue = findBestImage(['a' + str(ii)
+#                                          for ii in range(100, 123)])
+
+
+def getAllCatalogues(imageArray):
+  """Grab the SExtractor catalogue for all the images.
+  """
+  catalogueArray = []
+  for ii, frameID in enumerate(imageArray):
+    catalogueArray.append(getCatalogue(imageArray[ii]))
+  return catalogueArray
+
+
+def findSharedCatalogue(catalogueArray):
+  """Compare catalogues and create a master catalogue of only 
+  stars that are in all images
+  """
+  ntimes = len(catalogueArray)
+  xstar = [list(catalogueArray[ii]['XWIN_IMAGE']) for ii in range(ntimes)]
+  ystar = [list(catalogueArray[ii]['YWIN_IMAGE']) for ii in range(ntimes)]
+  magstar = [list(catalogueArray[ii]['MAG_AUTO']) for ii in range(ntimes)]
+  nobjmax = np.sum([len(xstar[tt]) for tt in np.arange(ntimes)])
+  master = np.zeros([nobjmax, 2 + ntimes])
+  n0 = len(xstar[0])
+  master[0:n0, 0:3] = np.array([xstar[0], ystar[0], magstar[0]]).T
+  nobjec = n0
+  for tt in np.arange(1, ntimes):
+    for ss in np.arange(len(xstar[tt])):
+      distsquare = ((master[:nobjec, 0] - xstar[tt][ss]) ** 2 +
+                    (master[:nobjec, 1] - ystar[tt][ss]) ** 2)
+      idx = distsquare.argmin()
+      if distsquare[idx] < 25:  # if match previous star, add mag to its array
+        master[idx, 2 + tt] = magstar[tt][ss]
+      else:  # else add a new star entry
+        master[nobjec, 2 + tt] = magstar[tt][ss]
+        master[nobjec, 0:2] = xstar[tt][ss], ystar[tt][ss]
+        nobjec += 1
+  trimlist = []
+  for ss in np.arange(nobjec):
+    if len(np.where(master[ss] == 0)[0]) == 0:
+      trimlist.append(ss)
+  sharedCatalogue = master[trimlist][:, 0:2]
+  """Only the X and Y of the shared catalogue is returned, even though
+  other information, like magnitude, from SExtractor could easily be added. 
+  This is because we don't need the magnitudes, we'll do better with TrIPPy.
+  """
+  return sharedCatalogue
+
+
 
 
 #
