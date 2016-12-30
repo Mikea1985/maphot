@@ -22,7 +22,7 @@ in order to predict the location in that image.
 from __future__ import print_function, division
 import numpy as np
 import astropy.io.fits as pyf
-from trippy import psfStarChooser, scamp
+from trippy import psfStarChooser, scamp, psf
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
 
@@ -31,7 +31,6 @@ def getCatalogue(file_start):
   """getCatalog checks whether a catalog file already exists.
   If it does, it is read in. If not, it runs SExtractor to create it.
   """
-  outfile = open(file_start + ".trippy", 'w')
   try:
     fullcatalog = scamp.getCatalog(file_start + '_fits.cat',
                                    paramFile='def.param')
@@ -64,7 +63,6 @@ def getCatalogue(file_start):
     raise
   ncat = len(fullcatalog['XWIN_IMAGE'])
   print("\n", ncat, " catalog stars\n")
-  outfile.write("\n{} catalog stars\n".format(ncat))
   return fullcatalog
 
 
@@ -88,47 +86,80 @@ def getAllCatalogues(imageArray):
   """Grab the SExtractor catalogue for all the images.
   """
   catalogueArray = []
-  for ii, frameID in enumerate(imageArray):
+  for ii, dummy in enumerate(imageArray):
     catalogueArray.append(getCatalogue(imageArray[ii]))
   return catalogueArray
 
 
-def findSharedCatalogue(catalogueArray):
-  """Compare catalogues and create a master catalogue of only 
+def findSharedCatalogue(catalogueArray, useIndex):
+  """Compare catalogues and create a master catalogue of only
   stars that are in all images
   """
   ntimes = len(catalogueArray)
+  keys = catalogueArray[0].keys()
+  nkeys = len(keys)
+  xkey = np.where(np.array(keys) == 'XWIN_IMAGE')[0][0]
+  ykey = np.where(np.array(keys) == 'YWIN_IMAGE')[0][0]
   xstar = [list(catalogueArray[ii]['XWIN_IMAGE']) for ii in range(ntimes)]
   ystar = [list(catalogueArray[ii]['YWIN_IMAGE']) for ii in range(ntimes)]
-  magstar = [list(catalogueArray[ii]['MAG_AUTO']) for ii in range(ntimes)]
-  nobjmax = np.sum([len(xstar[tt]) for tt in np.arange(ntimes)])
-  master = np.zeros([nobjmax, 2 + ntimes])
-  n0 = len(xstar[0])
-  master[0:n0, 0:3] = np.array([xstar[0], ystar[0], magstar[0]]).T
-  nobjec = n0
-  for tt in np.arange(1, ntimes):
+  nobjmax = len(xstar[useIndex])
+  master = np.zeros([nobjmax, nkeys + ntimes])
+  master[:, 0:nkeys] = np.array([list(catalogueArray[useIndex][key])
+                                 for key in keys]).T
+  for tt in np.arange(0, ntimes):
     for ss in np.arange(len(xstar[tt])):
-      distsquare = ((master[:nobjec, 0] - xstar[tt][ss]) ** 2 +
-                    (master[:nobjec, 1] - ystar[tt][ss]) ** 2)
+      distsquare = ((master[:, xkey] - xstar[tt][ss]) ** 2 +
+                    (master[:, ykey] - ystar[tt][ss]) ** 2)
       idx = distsquare.argmin()
-      if distsquare[idx] < 25:  # if match previous star, add mag to its array
-        master[idx, 2 + tt] = magstar[tt][ss]
-      else:  # else add a new star entry
-        master[nobjec, 2 + tt] = magstar[tt][ss]
-        master[nobjec, 0:2] = xstar[tt][ss], ystar[tt][ss]
-        nobjec += 1
+      if distsquare[idx] < 25:  # if match previous star, add to its array
+        master[idx, nkeys + tt] = 1
+      else:  # else do nothing
+        pass
   trimlist = []
-  for ss in np.arange(nobjec):
-    if len(np.where(master[ss] == 0)[0]) == 0:
+  for ss in np.arange(nobjmax):
+    if len(np.where(master[ss][nkeys:] == 0)[0]) == 0:
       trimlist.append(ss)
-  sharedCatalogue = master[trimlist][:, 0:2]
-  """Only the X and Y of the shared catalogue is returned, even though
-  other information, like magnitude, from SExtractor could easily be added. 
-  This is because we don't need the magnitudes, we'll do better with TrIPPy.
+  sharedCatalogue = {}
+  for kk, key in enumerate(keys):
+    sharedCatalogue[key] = master[trimlist][:, kk]
+  """This should return a catalogue dictionary formatted in the same
+  way as the original catalogue, allowing us to do anything with it that
+  we could do with any other catalogue. 
   """
   return sharedCatalogue
 
 
+def inspectStars(file_start, catalogue, repfact):
+  """Run psfStarChooser, inspect stars, generate PSF and lookup table.
+  """
+  try:
+    with pyf.open(file_start + '.fits') as han:
+      data = han[0].data
+    starChooser = psfStarChooser.starChooser(data, catalogue['XWIN_IMAGE'],
+                                             catalogue['YWIN_IMAGE'],
+                                             catalogue['FLUX_AUTO'],
+                                             catalogue['FLUXERR_AUTO'])
+    (goodFits, goodMeds, goodSTDs
+     ) = starChooser(30, 100,  # (box size, min SNR)
+                     initAlpha=3., initBeta=3.,
+                     repFact=repfact,
+                     includeCheesySaturationCut=False,
+                     verbose=False)
+    print("\ngoodFits = ", goodFits, "\n")
+    print("\ngoodMeds = ", goodMeds, "\n")
+    print("\ngoodSTDs = ", goodSTDs, "\n")
+    goodPSF = psf.modelPSF(np.arange(61), np.arange(61), alpha=goodMeds[2],
+                           beta=goodMeds[3], repFact=repfact)
+    fwhm = goodPSF.FWHM()  # this is the pure moffat FWHM
+    print("fwhm = ", fwhm)
+    goodPSF.genLookupTable(data, goodFits[:, 4], goodFits[:, 5], verbose=False)
+    goodPSF.genPSF()
+    fwhm = goodPSF.FWHM()  # this is the FWHM with lookuptable included
+    print("fwhm = ", fwhm)
+  except UnboundLocalError:
+    print("Data error occurred!")
+    raise
+  return goodFits, goodMeds, goodSTDs, goodPSF, fwhm
 
 
 #
