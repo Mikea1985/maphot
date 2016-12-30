@@ -129,9 +129,12 @@ def findSharedCatalogue(catalogueArray, useIndex):
   return sharedCatalogue
 
 
-def inspectStars(file_start, catalogue, repfact):
+def inspectStars(file_start, catalogue, repfact, **kwargs):
   """Run psfStarChooser, inspect stars, generate PSF and lookup table.
   """
+  SExCatalogue = kwargs.pop('return_SExtractor_catalogue', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
   try:
     with pyf.open(file_start + '.fits') as han:
       data = han[0].data
@@ -159,7 +162,23 @@ def inspectStars(file_start, catalogue, repfact):
   except UnboundLocalError:
     print("Data error occurred!")
     raise
-  return goodFits, goodMeds, goodSTDs, goodPSF, fwhm
+  if SExCatalogue:
+    bestCatalogue = extractGoodStarCatalogue(catalogue,
+                                             goodFits[:, 4], goodFits[:, 5])
+    return bestCatalogue
+  else:
+    return goodFits, goodMeds, goodSTDs, goodPSF, fwhm
+
+
+def extractGoodStarCatalogue(startCatalogue, xcat, ycat):
+  """extractBestStarCatalogue crops a Catalogue,
+  leaving only the stars that match a given x & y list.
+  """
+  trimCatalogue = {'XWIN_IMAGE': xcat,
+                   'YWIN_IMAGE': ycat}
+  goodCatalogue = findSharedCatalogue([startCatalogue, trimCatalogue], 0)
+  return goodCatalogue
+
 
 
 #
