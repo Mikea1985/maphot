@@ -9,6 +9,7 @@ Module for:
 from __future__ import print_function, division
 import getopt
 import sys
+import pickle
 import numpy as np
 import astropy.io.fits as pyf
 from trippy import psfStarChooser, scamp, psf
@@ -54,7 +55,7 @@ def getCatalogue(file_start, **kwargs):
     print("\nData error occurred!\n")
     raise
   ncat = len(fullcatalog['XWIN_IMAGE'])
-  print("\n", ncat, " catalog stars\n" if verbose else "")
+  print("\n" + str(ncat) + " catalog stars\n" if verbose else "")
   return fullcatalog
 
 
@@ -86,7 +87,7 @@ def getAllCatalogues(imageArray, **kwargs):
   catalogueArray = []
   for ii, dummy in enumerate(imageArray):
     catalogueArray.append(getCatalogue(imageArray[ii]))
-  print(len(catalogueArray), len(catalogueArray[0]) if verbose else "")
+  print((len(catalogueArray), len(catalogueArray[0])) if verbose else "")
   return catalogueArray
 
 
@@ -124,7 +125,7 @@ def findSharedCatalogue(catalogueArray, useIndex, **kwargs):
   sharedCatalogue = {}
   for kk, key in enumerate(keys):
     sharedCatalogue[key] = master[trimlist][:, kk]
-  print(len(sharedCatalogue), len(sharedCatalogue[0]) if verbose else "")
+  print((len(sharedCatalogue), len(sharedCatalogue[0])) if verbose else "")
   """This should return a catalogue dictionary formatted in the same
   way as the original catalogue, allowing us to do anything with it that
   we could do with any other catalogue.
@@ -154,17 +155,17 @@ def inspectStars(file_start, catalogue, repfactor, **kwargs):
                      includeCheesySaturationCut=False,
                      noVisualSelection=noVisualSelection,
                      verbose=False)
-    print("\ngoodFits = ", goodFits, "\n" if verbose else "")
-    print("\ngoodMeds = ", goodMeds, "\n" if verbose else "")
-    print("\ngoodSTDs = ", goodSTDs, "\n" if verbose else "")
+    print(("\ngoodFits = ", goodFits, "\n") if verbose else "")
+    print(("\ngoodMeds = ", goodMeds, "\n") if verbose else "")
+    print(("\ngoodSTDs = ", goodSTDs, "\n") if verbose else "")
     goodPSF = psf.modelPSF(np.arange(61), np.arange(61), alpha=goodMeds[2],
                            beta=goodMeds[3], repFact=repfactor)
     fwhm = goodPSF.FWHM()  # this is the pure moffat FWHM
-    print("fwhm = ", fwhm if verbose else "")
+    print("fwhm = " + str(fwhm) if verbose else "")
     goodPSF.genLookupTable(data, goodFits[:, 4], goodFits[:, 5], verbose=False)
     goodPSF.genPSF()
     fwhm = goodPSF.FWHM()  # this is the FWHM with lookuptable included
-    print("fwhm = ", fwhm if verbose else "")
+    print("fwhm = " + str(fwhm) if verbose else "")
   except UnboundLocalError:
     print("Data error occurred!")
     raise
@@ -187,7 +188,7 @@ def extractGoodStarCatalogue(startCatalogue, xcat, ycat, **kwargs):
                    'YWIN_IMAGE': ycat}
   print(trimCatalogue if verbose else "")
   goodCatalogue = findSharedCatalogue([startCatalogue, trimCatalogue], 0)
-  print(len(goodCatalogue), len(goodCatalogue[0]) if verbose else "")
+  print((len(goodCatalogue), len(goodCatalogue[0])) if verbose else "")
   return goodCatalogue
 
 
@@ -224,7 +225,7 @@ def getArguments(sysargv, **kwargs):
       elif opt in ('-f', '--ifile'):
         filenameFile = arg
       elif opt in ('-v', '--verbose'):
-        filenameFile = arg
+        verbose = arg
     imageArray = getFileNames(filenameFile)
   return imageArray, repfactor, verbose
 
@@ -235,8 +236,31 @@ def getFileNames(filenameFile, **kwargs):
   if kwargs:
     raise TypeError('Unexpected **kwargs: %r' % kwargs)
   imageArray = np.genfromtxt(filenameFile, usecols=(0), dtype=str)
-  print(filenameFile, imageArray if verbose else "")
+  print((filenameFile, imageArray) if verbose else "")
   return imageArray
+
+
+def pickleCatalogue(catalogue, filename, **kwargs):
+  """Write a catalogue to an ascii file."""
+  verbose = kwargs.pop('verbose', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
+  outfile = open(filename, 'wb')
+  pickle.dump(catalogue, outfile, pickle.HIGHEST_PROTOCOL)
+  print("Catalogue pickled." if verbose else "")
+  outfile.close()
+
+
+def unpickleCatalogue(filename, **kwargs):
+  """Write a catalogue to an ascii file."""
+  verbose = kwargs.pop('verbose', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
+  outfile = open(filename, 'rb')
+  catalogue = pickle.load(outfile)
+  outfile.close()
+  print("Catalogue unpickled." if verbose else "")
+  return catalogue
 
 
 def best(imageArray, repfactor, **kwargs):
@@ -252,6 +276,7 @@ def best(imageArray, repfactor, **kwargs):
   sharedCatalogue = findSharedCatalogue(catalogueArray, bestID)
   bestCatalogue = inspectStars(imageArray[bestID], sharedCatalogue, repfactor,
                                SExCatalogue=True, noVisualSelection=False)
+  pickleCatalogue(bestCatalogue, 'best.cat')
   return bestID, bestCatalogue
 
 if __name__ == '__main__':

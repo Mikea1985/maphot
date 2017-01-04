@@ -29,6 +29,7 @@ from astropy.visualization import interval
 import pylab as pyl
 from trippy import psf, pill, psfStarChooser, scamp, MCMCfit
 from stsci import numdisplay
+import best
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
 
@@ -203,7 +204,7 @@ def findTNO(xzero, yzero):
     outfile.write("\n   WARNING! Object not found at {}, {}\n".format(xzero,
                                                                       yzero))
     xtno, ytno = xzero, yzero
-  return xtno, yt
+  return xtno, ytno
 
 
 ###############################################################################
@@ -263,6 +264,7 @@ else:
 print("xt, yt = ", xt, yt, "\n")
 outfile.write("xt, yt = {}, {}\n".format(xt, yt))
 
+"""  # Commenting this out until replacement has been tested thoroughly.
 ncat_psf = 0
 ncat_phot = 0
 i = 0
@@ -276,6 +278,16 @@ print("\n", ncat_psf, ncat_phot,
       " trimmed catalog stars ({} iterations)\n".format(i - 1))
 outfile.write("\n{}, {} trimmed catalog stars".format(ncat_psf, ncat_phot) +
               " ({} iterations)\n".format(i - 1))
+"""
+try:
+  bestcat = best.unpickleCatalogue('best.cat')
+  print('Success!')
+except IOError:
+  print('Uh oh!')
+  best.best(['a' + str(i) for i in range(100, 124)], repfact)
+  bestcat = best.unpickleCatalogue('best.cat')
+catalog_psf = best.findSharedCatalogue([fullcat, bestcat], 0)
+catalog_phot = catalog_psf
 
 try:
   goodPSF = psf.modelPSF(restore=inputName + '_psf.fits')
