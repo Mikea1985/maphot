@@ -1,25 +1,14 @@
 #!/usr/bin/python
-"""maphot is a wrapper for easily running trippy on a bunch of images
-of a single object on a single night.
-Usage: (-h gives this line as well)
-maphot.py -c <coofile> -f <fitsfile> -v False -. True -o False -r True -a 07
-Defaults are:
-inputFile = 'a100.fits'  # Change with '-f <filename>' flag
-coofile = 'coords.in'  # Change with '-c <coofile>' flag
-verbose = False  # Change with '-v True' or '--verbose True'
-centroid = True  # Change with '-. False' or  --centroid False'
-overrideSEx = False  # Change with '-o True' or '--override True'
-remove = True  # Change with '-r False' or '--remove False'
-aprad = 0.7  # Change with '-a 1.5' or '--aprad 1.5'
-coordsfile is a file that contains:
-x1 y1 MJD1
-x2 y2 MJD2
-ie. the position of the TNO at two times, and those times in MJD format.
-The script then reads the MJD keyword from the input files and extrapolates
-in order to predict the location in that image.
+"""
+Module for:
+ finding the best image,
+ finding catalogue of stars visible in all,
+ finding the best images from that catalogue.
 """
 
 from __future__ import print_function, division
+import getopt
+import sys
 import numpy as np
 import astropy.io.fits as pyf
 from trippy import psfStarChooser, scamp, psf
@@ -27,10 +16,13 @@ __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
 
 
-def getCatalogue(file_start):
+def getCatalogue(file_start, **kwargs):
   """getCatalog checks whether a catalog file already exists.
   If it does, it is read in. If not, it runs SExtractor to create it.
   """
+  verbose = kwargs.pop('verbose', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
   try:
     fullcatalog = scamp.getCatalog(file_start + '_fits.cat',
                                    paramFile='def.param')
@@ -62,39 +54,49 @@ def getCatalogue(file_start):
     print("\nData error occurred!\n")
     raise
   ncat = len(fullcatalog['XWIN_IMAGE'])
-  print("\n", ncat, " catalog stars\n")
+  print("\n", ncat, " catalog stars\n" if verbose else "")
   return fullcatalog
 
 
-def findBestImage(imageArray):
+def findBestImage(imageArray, **kwargs):
   """findBestImage finds the best image among a list.
-  Not yet tested.
   """
+  verbose = kwargs.pop('verbose', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
   zeros = np.zeros(len(imageArray))
   for ii, frameID in enumerate(imageArray):
     hans = pyf.open(frameID + '.fits')
     headers = hans[0].header
     zeros[ii] = headers['MAGZERO']
-  bestzeroid = np.argmax(zeros)
-  bestfullcat = getCatalogue(imageArray[bestzeroid])
-  return imageArray[bestzeroid], bestfullcat
+  bestZeroID = np.argmax(zeros)
+  bestFullCatalogue = getCatalogue(imageArray[bestZeroID])
+  print("Image" + str(bestZeroID) + " is best." if verbose else "")
+  return bestZeroID, bestFullCatalogue
 #bestImage, bestCatalogue = findBestImage(['a' + str(ii)
 #                                          for ii in range(100, 123)])
 
 
-def getAllCatalogues(imageArray):
+def getAllCatalogues(imageArray, **kwargs):
   """Grab the SExtractor catalogue for all the images.
   """
+  verbose = kwargs.pop('verbose', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
   catalogueArray = []
   for ii, dummy in enumerate(imageArray):
     catalogueArray.append(getCatalogue(imageArray[ii]))
+  print(len(catalogueArray), len(catalogueArray[0]) if verbose else "")
   return catalogueArray
 
 
-def findSharedCatalogue(catalogueArray, useIndex):
+def findSharedCatalogue(catalogueArray, useIndex, **kwargs):
   """Compare catalogues and create a master catalogue of only
   stars that are in all images
   """
+  verbose = kwargs.pop('verbose', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
   ntimes = len(catalogueArray)
   keys = catalogueArray[0].keys()
   nkeys = len(keys)
@@ -122,17 +124,20 @@ def findSharedCatalogue(catalogueArray, useIndex):
   sharedCatalogue = {}
   for kk, key in enumerate(keys):
     sharedCatalogue[key] = master[trimlist][:, kk]
+  print(len(sharedCatalogue), len(sharedCatalogue[0]) if verbose else "")
   """This should return a catalogue dictionary formatted in the same
   way as the original catalogue, allowing us to do anything with it that
-  we could do with any other catalogue. 
+  we could do with any other catalogue.
   """
   return sharedCatalogue
 
 
-def inspectStars(file_start, catalogue, repfact, **kwargs):
+def inspectStars(file_start, catalogue, repfactor, **kwargs):
   """Run psfStarChooser, inspect stars, generate PSF and lookup table.
   """
-  SExCatalogue = kwargs.pop('return_SExtractor_catalogue', False)
+  SExCatalogue = kwargs.pop('SExCatalogue', False)
+  noVisualSelection = kwargs.pop('noVisualSelection', True)
+  verbose = kwargs.pop('verbose', False)
   if kwargs:
     raise TypeError('Unexpected **kwargs: %r' % kwargs)
   try:
@@ -145,20 +150,21 @@ def inspectStars(file_start, catalogue, repfact, **kwargs):
     (goodFits, goodMeds, goodSTDs
      ) = starChooser(30, 100,  # (box size, min SNR)
                      initAlpha=3., initBeta=3.,
-                     repFact=repfact,
+                     repFact=repfactor,
                      includeCheesySaturationCut=False,
+                     noVisualSelection=noVisualSelection,
                      verbose=False)
-    print("\ngoodFits = ", goodFits, "\n")
-    print("\ngoodMeds = ", goodMeds, "\n")
-    print("\ngoodSTDs = ", goodSTDs, "\n")
+    print("\ngoodFits = ", goodFits, "\n" if verbose else "")
+    print("\ngoodMeds = ", goodMeds, "\n" if verbose else "")
+    print("\ngoodSTDs = ", goodSTDs, "\n" if verbose else "")
     goodPSF = psf.modelPSF(np.arange(61), np.arange(61), alpha=goodMeds[2],
-                           beta=goodMeds[3], repFact=repfact)
+                           beta=goodMeds[3], repFact=repfactor)
     fwhm = goodPSF.FWHM()  # this is the pure moffat FWHM
-    print("fwhm = ", fwhm)
+    print("fwhm = ", fwhm if verbose else "")
     goodPSF.genLookupTable(data, goodFits[:, 4], goodFits[:, 5], verbose=False)
     goodPSF.genPSF()
     fwhm = goodPSF.FWHM()  # this is the FWHM with lookuptable included
-    print("fwhm = ", fwhm)
+    print("fwhm = ", fwhm if verbose else "")
   except UnboundLocalError:
     print("Data error occurred!")
     raise
@@ -170,15 +176,90 @@ def inspectStars(file_start, catalogue, repfact, **kwargs):
     return goodFits, goodMeds, goodSTDs, goodPSF, fwhm
 
 
-def extractGoodStarCatalogue(startCatalogue, xcat, ycat):
+def extractGoodStarCatalogue(startCatalogue, xcat, ycat, **kwargs):
   """extractBestStarCatalogue crops a Catalogue,
   leaving only the stars that match a given x & y list.
   """
+  verbose = kwargs.pop('verbose', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
   trimCatalogue = {'XWIN_IMAGE': xcat,
                    'YWIN_IMAGE': ycat}
+  print(trimCatalogue if verbose else "")
   goodCatalogue = findSharedCatalogue([startCatalogue, trimCatalogue], 0)
+  print(len(goodCatalogue), len(goodCatalogue[0]) if verbose else "")
   return goodCatalogue
 
+
+def getArguments(sysargv, **kwargs):
+  """Get arguments given when this is called from a command line"""
+  filenameFile = 'files.txt'  # Change with '-f <filename>' flag
+  repfactor = 10
+  verbose = kwargs.pop('verbose', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
+  try:
+    options, dummy = getopt.getopt(sysargv[1:], "f:v:h:",
+                                   ["ifile=i", "verbose"])
+  except TypeError as error:
+    print(error)
+    sys.exit()
+  except getopt.GetoptError as error:
+    print(" Input ERROR! ")
+    print('best -f <filename>')
+    sys.exit(2)
+  else:
+    for opt, arg in options:
+      if opt in ("-v", "-verbose"):
+        if arg == '0' or arg == 'False':
+          arg = False
+        elif arg == '1' or arg == 'True':
+          arg = True
+        else:
+          print(opt, arg, np.array([arg]).dtype)
+          raise TypeError("-v flags must be followed by " +
+                          "0/False/1/True")
+      if opt == '-h':
+        print('best -f <filename>')
+      elif opt in ('-f', '--ifile'):
+        filenameFile = arg
+      elif opt in ('-v', '--verbose'):
+        filenameFile = arg
+    imageArray = getFileNames(filenameFile)
+  return imageArray, repfactor, verbose
+
+
+def getFileNames(filenameFile, **kwargs):
+  """Reads a file that has a list of filenames, one per line."""
+  verbose = kwargs.pop('verbose', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
+  imageArray = np.genfromtxt(filenameFile, usecols=(0), dtype=str)
+  print(filenameFile, imageArray if verbose else "")
+  return imageArray
+
+
+def best(imageArray, repfactor, **kwargs):
+  """This function can be run to do all of the above.
+  This is called automatically if this is main."""
+  verbose = kwargs.pop('verbose', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
+  print(imageArray if verbose else "")
+  bestID, bestCatalogue = findBestImage(imageArray)
+  print(bestID if verbose else "")
+  catalogueArray = getAllCatalogues(imageArray)
+  sharedCatalogue = findSharedCatalogue(catalogueArray, bestID)
+  bestCatalogue = inspectStars(imageArray[bestID], sharedCatalogue, repfactor,
+                               SExCatalogue=True, noVisualSelection=False)
+  return bestID, bestCatalogue
+
+if __name__ == '__main__':
+  images, repfact, verbatim = getArguments(sys.argv)
+  bestImage, bestCat = best(images, repfact, verbose=verbatim)
+  print('Best catalogue:')
+  print(bestCat)
+  print('Best image #: ' + str(bestImage))
 
 
 #
