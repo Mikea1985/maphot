@@ -124,8 +124,8 @@ def runMCMCCentroid(centPSF, centData, centxt, centyt, centm,
   centfitter.fitWithModelPSF(centdtransx + centxt - int(centxt),
                              centdtransy + centyt - int(centyt),
                              m_in=centm / repfact ** 2.,
-                             fitWidth=10, nWalkers=30,
-                             nBurn=10, nStep=20, bg=centbg, useLinePSF=True,
+                             fitWidth=10, nWalkers=10,
+                             nBurn=20, nStep=20, bg=centbg, useLinePSF=True,
                              verbose=True, useErrorMap=False)
   (centfitPars, centfitRange) = centfitter.fitResults(0.67)
 # Reverse the above coordinate transformation:
@@ -398,7 +398,7 @@ while True:
   pyl.plot([zx + xt0 - int(xt0)], [zy + yt0 - int(yt0)], 'w+', ms=10, mew=2)
   if centroid or remove:
     print("Should I be doing this?")
-    xcent, ycent, fitPars, fitRange = runMCMCCentroid(goodPSF, Data, xt, yt,
+    xcent, ycent, fitPars, fitRange = runMCMCCentroid(goodPSF, Data, x0, y0,
                                                       m_obj, bgmedian,
                                                       dtransx, dtransy)
     pyl.plot([zx + xcent - int(xt0)],
@@ -409,30 +409,33 @@ while True:
     pyl.show()
     yn = input('Accept MCMC centroid (m or c), '
                + 'SExtractor centroid (S), or estimate (e)? ')
-    if ('e' in yn) or ('E' in yn):
+    if ('e' in yn) or ('E' in yn):  # if press e/E use estimate
       xt, yt = x0, y0
       break
-    elif ('m' in yn) or ('M' in yn) or ('c' in yn) or ('C' in yn):
+    elif ('m' in yn) or ('M' in yn) or ('c' in yn) or ('C' in yn):  # centroid
       xt, yt = xcent, ycent
       break
     else:
       yn = 'S'  # else do nothing, use SExtractor co-ordinates.
       break
-  else:
-    print("Estimated    (black)  x,y = ", x0, y0)
-    print("SExtractor   (white)  x,y = ", xt, yt)
-    pyl.show()
-    yn = input('Accept '
-               + 'SExtractor centroid (S), or estimate (e), '
-               + ' or recentroid using MCMC (m or c)? ')
-    if ('e' in yn) or ('E' in yn):
-      xt, yt = x0, y0
-      break
-    elif ('m' in yn) or ('M' in yn) or ('c' in yn) or ('C' in yn):
+  else:  # if not previously centroided, check whether needed
+    if (x0 == xt) & (y0 == yt):  # if TNO not seen in SExtractor, run centroid
       centroid = True
-    else:
-      yn = 'S'  # else do nothing, use SExtractor co-ordinates.
-      break
+    else:  # else pick between estimate, SExtractor and recentroiding
+      print("Estimated    (black)  x,y = ", x0, y0)
+      print("SExtractor   (white)  x,y = ", xt, yt)
+      pyl.show()
+      yn = input('Accept '
+                 + 'SExtractor centroid (S), or estimate (e), '
+                 + ' or recentroid using MCMC (m or c)? ')
+      if ('e' in yn) or ('E' in yn):  # if press e/E use estimate
+        xt, yt = x0, y0
+        break
+      elif ('m' in yn) or ('M' in yn) or ('c' in yn) or ('C' in yn):  # cntroid
+        centroid = True
+      else:
+        yn = 'S'  # else do nothing, use SExtractor co-ordinates.
+        break
 
 
 print('\nPhotometry of moving object\n')
