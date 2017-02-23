@@ -7,6 +7,10 @@ import re
 import glob
 import numpy as np
 import matplotlib.pyplot as plt
+from astropy import coordinates as coords
+from astropy.wcs import WCS
+from astroquery.sdss import SDSS
+
 
 def readtrippyfile(filename):
   '''Use this function to read in trippy files.
@@ -26,6 +30,7 @@ def readtrippyfile(filename):
   return (xcoord[-1], ycoord[-1], magni[-1], dmagni[-1],
           xcoord[0:-1], ycoord[0:-1], magni[0:-1], dmagni[0:-1], mjdate)
 
+
 def readmagfile(filename, nobject, naperture):
   '''I don't remember what this does...
      It's not currently used.'''
@@ -36,6 +41,7 @@ def readmagfile(filename, nobject, naperture):
         np.genfromtxt(filename, usecols=(0, 4, 5), unpack=True,
                       skip_header=79 + ii * 23, max_rows=naperture)
   return aperture, magnitude, magerror
+
 
 def averagemag(magnitude, magerror, naperture, useobject):
   '''Calculates the average magnitude of the selected stars.'''
@@ -48,6 +54,7 @@ def averagemag(magnitude, magerror, naperture, useobject):
       meanmag[ii] = np.mean(magnitude[useobject, ii])
       meanerror[ii] = np.std(magerror[useobject, ii])
   return meanmag, meanerror
+
 
 def plotapcor(allobjects, useobject, aperture, magnitude,
               magerror, meanmag, meanerror):
@@ -64,6 +71,7 @@ def plotapcor(allobjects, useobject, aperture, magnitude,
   ax1.errorbar(aperture, meanmag[:], meanerror[:], lw=3)
   ax2.plot(aperture, meanerror[:], lw=3)
   plt.show()
+
 
 def printscatter(useindex, x, y, relmagnitude):
   '''Print the scatter of each star across exposures'''
@@ -83,6 +91,7 @@ def printscatter(useindex, x, y, relmagnitude):
   print "{0:3.0f} <- Max scatter".format(maxstd * 1000),
   print " of {} sources.".format(numsource)
   return maxi, maxstd, numsource
+
 
 def plotscatter(aperture, alltimes, relmagnitude, useobject, magerror, x, y):
   '''Plot the scatter'''
@@ -110,6 +119,7 @@ def plotscatter(aperture, alltimes, relmagnitude, useobject, magerror, x, y):
     plt.show()
   return scattererror
 
+
 def trimcatalog(xstar, ystar, magstar, dmagstar):
   '''This trims all stars out of the catalog that do not have
      measured magnitudes in every frame.'''
@@ -136,6 +146,7 @@ def trimcatalog(xstar, ystar, magstar, dmagstar):
   trimmed = master[trimlist]
   return trimmed
 
+
 def trimcatalog_unwrap(xstar, ystar, magstar, dmagstar):
   '''A wrapper to make pylint shut up about me having too many variables
      in a single functions.'''
@@ -144,6 +155,45 @@ def trimcatalog_unwrap(xstar, ystar, magstar, dmagstar):
   magtrim, dmagtrim = trimmed[:, 2::2], trimmed[:, 3::2]
   idx = np.argsort(np.mean(trimmed, 1))
   return xtrim[idx], ytrim[idx], magtrim[idx], dmagtrim[idx]
+
+
+def sdss_check(x, y):
+  """
+  Check whether stars are in the SDSS catalogue.
+  This function accepts either a single x and y coordinate,
+  or an array of each.
+  """
+  w = WCS('a100.fits')
+  sfilt = []
+  lon, lat = w.all_pix2world(x, y, 1)
+  print lon, lat
+  pos = coords.SkyCoord(lon, lat, unit="deg")
+  print pos
+  if len(x) <= 1 or len(y) <= 1 or len(x) != len(y):
+    print 'Error: Need a set of coordinates.'
+    print '       X and Y must have same non-zero size.'
+  elif len(x) == 1:
+    pos = [pos]
+  print pos
+  sfilt = SDSS.query_region(pos[0], radius='1arcsec', data_release=13,
+                            photoobj_fields=['RA', 'Dec', 'psfMag_r',
+                                             'psfMagErr_r',
+                                             'psffwhm_r', 'nDetect'])[0:0]
+  print sfilt
+  for p in pos:
+    sfull = SDSS.query_region(p, radius='1arcsec', data_release=13,
+                              photoobj_fields=['RA', 'Dec', 'psfMag_r',
+                                               'psfMagErr_r',
+                                               'psffwhm_r', 'nDetect'])
+    try:
+      sfilt.add_row(sfull[np.where((sfull['nDetect'] > 0) &
+                                   (sfull['psfMag_r'] > -99))[0]][0])
+    except TypeError:
+      print "Star at " + str(p)[39:-1] + " not found :-(."
+    print sfilt
+  return sfilt
+
+
 
 verbose = 1
 files = glob.glob("./a???.trippy")
