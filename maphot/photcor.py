@@ -149,15 +149,6 @@ verbose = 1
 files = glob.glob("./a???.trippy")
 files.sort()
 ntimes = len(files)
-#nobj = 32
-#nobj = 500
-napr = 14
-#objects = np.arange(nobj)
-#useobj = np.ones(nobj, dtype = bool)
-#useobj = objects<200
-#mag, magerr, rmag = np.zeros([3, ntimes, nobj, napr])
-#avmag, avmagerr = np.zeros([2, ntimes, napr])
-#srmag = np.zeros([nobj, napr])
 xcoo = list(np.zeros(ntimes))
 ycoo, mag, magerr, rmag = xcoo[:], xcoo[:], xcoo[:], xcoo[:]
 magin, magerrin = xcoo[:], xcoo[:]
@@ -168,17 +159,8 @@ avmagobj, avmagerrobj = np.zeros([2, ntimes])
 
 for t, infile in enumerate(files):
   print infile
-#  apr, mag[t, :, :], magerr[t, :, :] = \
-#    readmagfile('a-00'+str(time)+'-013.fits.mag.3', nobj, napr)
-#  xobj[t], yobj[t], magobj[t], magerrobj[t], xcoo[t], ycoo[t], magin[t], \
-#    magerrin[t] = readtrippyfile('a-00'+str(time)+'-013.trippy')  # noqa E127
   xobj[t], yobj[t], magobj[t], magerrobj[t], xcoo[t], ycoo[t], \
     magin[t], magerrin[t], mjd[t] = readtrippyfile(infile)  # noqa E127
-#  avmag[t, :], avmagerr[t, :] = averagemag(mag[t, :, :], magerr[t, :, :],
-#                                            napr, useobj)
-#  verbose = False
-#  if (verbose): plotapcor(objects, useobj, apr, mag[t, :, :],
-#                           magerr[t, :, :], avmag[t, :], avmagerr[t, :])
 
 '''
 Stop using any objects that don't have magnitudes in all appertures.
@@ -187,12 +169,6 @@ xcat, ycat, mag, magerr = trimcatalog_unwrap(xcoo, ycoo, magin, magerrin)
 useobj = mag[:, 0] < 30
 nobj = np.shape(mag)[0]
 objects = np.arange(nobj)
-#for t, time in enumerate(times):
-#  for j in np.arange(napr):
-#    nouseobj = np.isnan(mag[t, :, j])
-#    mag[:, nouseobj, :] = np.nan
-#    magerr[:, nouseobj, :] = np.nan
-#    useobj[nouseobj] = False
 
 '''
 Calculate the average again,  using only the objects that we want.
@@ -200,43 +176,16 @@ Calculate the average again,  using only the objects that we want.
 rmag = np.zeros(np.shape(mag)).T
 for t, time in enumerate(mjd):
   avmag[t], avmagerr[t] = averagemag(mag[:, t], magerr[:, t], 1, useobj)
-#  avmag[t, :], avmagerr[t, :] = averagemag(mag[t, :, :], magerr[t, :, :],
-#                                            napr, useobj)
-#  verbose = False
-#  if (verbose): plotapcor(objects, useobj, apr, mag[t, :, :],
-#                          magerr[t, :, :], avmag[t, :], avmagerr[t, :])
   '''
   Calculate the magnitude of all stars relative to the average.
   '''
-#  rmag[t, :, :] = mag[t, :, :]-avmag[t, :]
   rmag[t, :] = mag[:, t] - avmag[t]
-
-'''
-Plot the magnitude of objects as a function of time, 
-for each aperture size.
-Also print the standard deviation of the mag for each star.
-'''
-#print "Star | Standard deviation (milli-mags) at various apertures"
-#printscatter(objects[useobj], rmag)
-#scaterr = plotscatter(apr, times, rmag, useobj, magerr)
-#print "Mean |",
-#for j in np.arange(napr):
-#  print "{0:3.0f}".format(np.mean(scaterr[:, j])*1000),
-#print " "
-#print "Star | Standard deviation (milli-mags)"
-#printscatter(objects[useobj], np.array([rmag.T]).T)
-#scaterr = plotscatter([1], ttimes, np.array([rmag.T]).T, useobj,
-#                      np.array([magerr]).T)
-#print "Mean |",
-#print "{0:3.0f}".format(np.mean(scaterr[:])*1000)
 
 '''
 Allow user to weed out any variable stars.
 '''
 yn = 'Yes'
 autokill = True
-#yn = raw_input("Are there any stars you wish to " +
-#               "ignore due to variability? (Y/n) ")
 while not ('n' in yn) | ('N' in yn):
   for t, time in enumerate(mjd):
     avmag[t], avmagerr[t] = averagemag(mag[:, t], magerr[:, t], 1, useobj)
@@ -269,18 +218,8 @@ while not ('n' in yn) | ('N' in yn):
         continue
 
 '''
-Calculate the average again,  using only the objects that we want.
-'''
-#for t, time in enumerate(times):
-#  avmag[t, :], avmagerr[t, :] = averagemag(mag[t, :, :], magerr[t, :, :],
-#                                           napr, useobj)
-#  verbose = False
-#  if (verbose): plotapcor(objects, useobj, apr, mag[t, :, :],
-#                          magerr[t, :, :], avmag[t, :], avmagerr[t, :])
-'''
 Calculate the magnitude of all stars relative to the average.
 '''
-#  rmag[t, :, :] = mag[t, :, :]-avmag[t, :]
 for t, time in enumerate(mjd):
   avmag[t], avmagerr[t] = averagemag(mag[:, t], magerr[:, t], 1, useobj)
   rmag[t, :] = mag[:, t] - avmag[t]
@@ -288,59 +227,26 @@ for t, time in enumerate(mjd):
 '''Plot the magnitude of objects as a function of time,
    for each aperture size.
    Also print the standard deviation of the mag for each star.'''
-#print "Star | Standard deviation (milli-mags) at various times"
 print "Star |  x    y   | Standard deviation (milli-mags)"
 printscatter(objects[useobj], xcat, ycat, np.array([rmag.T]).T)
 scaterr = plotscatter([1], mjd, np.array([rmag.T]).T, useobj,
                       np.array([magerr]).T, xcat, ycat)
-#printscatter(objects[useobj], rmag)
-#scaterr = plotscatter(apr, times, rmag, useobj, magerr)
-#print "Mean |",
-#for j in np.arange(napr):
-#  print "{0:3.0f}".format(np.mean(scaterr[:, j])*1000),
-#print " "
 print "Mean |           | {0:3.0f}".format(np.mean(scaterr[:]) * 1000)
 print "Max  |           | {0:3.0f}".format(np.max(scaterr[:]) * 1000)
 
 # Now read in measured object
 tnomag, tnomagerr = magobj.copy(), magerrobj.copy()
-#tnomag, tnomagerr, tnormag = np.zeros([3, ntimes, napr])
-#for t, time in enumerate(times):
-#  print time
-#  apr, tnomag[t, :], tnomagerr[t, :] = readmagfile('a-00'+str(time) +
-#                                                   '-013.fits.mag.5', 1, napr)
-#  fig1, ax1 = plt.subplots()
-#  fig2, ax2 = plt.subplots()
-#  ax1.errorbar(apr, tnomag[t, :], tnomagerr[t, :])
-#  ax2.plot(apr, tnomagerr[t, :])
-#  plt.show()
-#[plt.errorbar(times, tnomag[:, j], tnomagerr[:, j]) for j in np.arange(napr)]
-#[plt.errorbar(times, tnomag[:, j] - avmag[:, j],
-#              tnomagerr[:, j] + scaterr[:, j]) for j in np.arange(napr)]
 plt.errorbar(mjd, tnomag[:], tnomagerr[:])
 plt.errorbar(mjd, tnomag[:] - avmag[:], tnomagerr[:] + scaterr[:, 0])
 
-#apcor = np.array([avmag[t, :]-avmag[t, -1] for t, time in enumerate(times)])
-#[plt.errorbar(times, tnomag[:, j], tnomagerr[:, j]) for j in np.arange(napr)]
-#[plt.errorbar(times, avmag[:, j], scaterr[:, j]) for j in np.arange(napr)]
-#[plt.errorbar(times, 12+tnomag[:, j] - avmag[:, j],
-#              tnomagerr[:, j] + scaterr[:, j]) for j in np.arange(napr)]
 plt.errorbar(mjd, tnomag[:], tnomagerr[:])
 plt.errorbar(mjd, avmag[:], scaterr[:, 0])
 plt.errorbar(mjd, 12 + tnomag[:] - avmag[:], tnomagerr[:] + scaterr[:, 0])
-#correltnomag = np.array([(tnomag-avmag)[t, np.argmin(tnomagerr[t, :])]
-#                         for t, time in enumerate(times)])
 correltnomag = np.array([(tnomag - avmag)[t] for t, time in enumerate(mjd)])
-#plt.errorbar(times, 10+correltnomag, tnomagerr[:, 0]+scaterr[:, 0], lw = 1,
-#             capsize = 20, elinewidth = 3)
 plt.errorbar(mjd, 10 + correltnomag, tnomagerr[:] + scaterr[:, 0], lw=1,
              capsize=20, elinewidth=3)
 
 plt.figure()
-#[plt.errorbar(times, rmag[:, i, -1], magerr[:, i, -1]+scaterr[:, 0],
-#               lw=useobj[i]) for i in objects]
-#plt.errorbar(times, correltnomag, tnomagerr[:, 5]+scaterr[:, 0], lw=1,
-#             capsize=20, elinewidth=3)
 [plt.errorbar(mjd, rmag[:, i], magerr[i, :] + scaterr[:, 0], lw=useobj[i]
               ) for i in objects[useobj]]
 plt.errorbar(mjd, correltnomag, tnomagerr[:] + scaterr[:, 0], lw=1,
@@ -351,12 +257,6 @@ plt.show()
 plt.figure()
 trippyerr = (tnomagerr ** 2 + scaterr[:, 0] ** 2) ** 0.5
 trippymag = correltnomag
-#sexmag=np.array([25.0304, 24.8231, 24.8566, 24.8246, 24.8735, 24.6488,
-#                 24.5450, 24.8227, 24.4284, 24.4142])
-#sexerr=np.array([0.1571, 0.1159, 0.1089, 0.0812, 0.0804, 0.0753, 0.0800,
-#                 0.1396, 0.0605, 0.0600])
-#plt.errorbar(mjd, sexmag-np.nanmean(sexmag), sexerr, lw=1, capsize=20,
-#             elinewidth=3, label='SExtractor')
 plt.errorbar(mjd, trippymag - np.mean(trippymag), trippyerr, marker='+', lw=0,
              capsize=20, elinewidth=3, label='TRIPPy')
 plt.gca().invert_yaxis()
