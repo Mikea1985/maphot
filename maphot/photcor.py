@@ -8,6 +8,7 @@ import glob
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy import coordinates as coords
+from astropy.table.table import Table as astroTable
 from astropy.wcs import WCS
 from astroquery.sdss import SDSS
 
@@ -100,21 +101,22 @@ def plotscatter(aperture, alltimes, relmagnitude, useobject, magerror, x, y):
     ax3 = plt.subplot2grid((2, 3), (1, 0), colspan=2)
     ax4 = plt.subplot2grid((2, 3), (0, 0), colspan=2)
     ax5 = plt.subplot2grid((2, 3), (0, 2), rowspan=2)
+    useindex = np.arange(len(useobject))[useobject]
     [ax3.plot(alltimes, relmagnitude[:, ii, jj], lw=useobject[ii]
-              ) for ii in np.arange(len(useobject))]
+              ) for ii in useindex]
     ax3.set_xlabel(aperture[jj])
     scattermag = np.array([relmagnitude[:, ii, jj] -
                            np.mean(relmagnitude[:, ii, jj])
                            for ii in np.arange(len(useobject))]).T
     [ax4.errorbar(alltimes, scattermag[:, ii], magerror[:, ii, jj],
-                  lw=useobject[ii]) for ii in np.arange(len(useobject))]
-    scattererror[:, jj] = [np.nanstd(scattermag[tt, :])
+                  lw=useobject[ii], zorder=2) for ii in useindex]
+    scattererror[:, jj] = [np.nanstd(scattermag[tt, useindex])
                            for tt in np.arange(len(alltimes))]
     ax4.errorbar(alltimes, np.zeros(len(alltimes)), scattererror[:, jj], lw=0,
-                 capsize=20, elinewidth=3)
+                 capsize=20, elinewidth=0, color='k', zorder=1)
     ax4.set_xlabel(aperture[jj])
     [ax5.plot(x[ii], y[ii], 'o', ms=np.std(scattermag[:, ii]) * 300, alpha=0.3
-              ) for ii in np.arange(len(useobject))]
+              ) for ii in useindex]
     ax5.axis([0, 2048, 0, 4176])
     plt.show()
   return scattererror
@@ -165,34 +167,38 @@ def sdss_check(x, y):
   """
   w = WCS('a100.fits')
   sfilt = []
-  lon, lat = w.all_pix2world(x, y, 1)
-  print lon, lat
-  pos = coords.SkyCoord(lon, lat, unit="deg")
-  print pos
-  if len(x) <= 1 or len(y) <= 1 or len(x) != len(y):
-    print 'Error: Need a set of coordinates.'
+  # Check which format x and y are given in.
+  if not (isinstance(x, (np.ndarray, list, float, int)) &
+          isinstance(y, (np.ndarray, list, float, int)) &
+          (np.shape(x) == np.shape(y))):
+    print 'Error: Need a set of pixel coordinates.'
     print '       X and Y must have same non-zero size.'
-  elif len(x) == 1:
+    raise TypeError
+  x = [x] if (np.shape(x) == ()) else x
+  y = [y] if (np.shape(y) == ()) else y
+  lon, lat = w.all_pix2world(x, y, 1)
+  pos = coords.SkyCoord(lon, lat, unit="deg")
+  if len(pos) == 1:
     pos = [pos]
-  print pos
-  sfilt = SDSS.query_region(pos[0], radius='1arcsec', data_release=13,
-                            photoobj_fields=['RA', 'Dec', 'psfMag_r',
-                                             'psfMagErr_r',
-                                             'psffwhm_r', 'nDetect'])[0:0]
-  print sfilt
-  for p in pos:
-    sfull = SDSS.query_region(p, radius='1arcsec', data_release=13,
-                              photoobj_fields=['RA', 'Dec', 'psfMag_r',
-                                               'psfMagErr_r',
-                                               'psffwhm_r', 'nDetect'])
+  table_fields = ['RA', 'Dec', 'psfMag_r', 'psfMagErr_r',
+                  'psffwhm_r', 'nDetect', 'X_pixel', 'Y_pixel']
+  sfilt = astroTable(names=table_fields)
+  for index, position in enumerate(pos):
+    sfull = SDSS.query_region(position, radius='1arcsec', data_release=13,
+                              photoobj_fields=table_fields[:-2])
     try:
-      sfilt.add_row(sfull[np.where((sfull['nDetect'] > 0) &
-                                   (sfull['psfMag_r'] > -99))[0]][0])
+      sline = (sfull[np.where((sfull['nDetect'] > 0) &
+                              (sfull['psfMag_r'] > -99))[0]][0])
+      slist = [sl for sl in sline]
+      slist.append(x[index])
+      slist.append(y[index])
+      sfilt.add_row(slist)
     except TypeError:
-      print "Star at " + str(p)[39:-1] + " not found :-(."
-    print sfilt
+      print "Star at " + str(position)[39:-1] + " not found :-(."
+      slist = np.zeros(len(table_fields))
+      slist[-2:] = x[index], y[index]
+      sfilt.add_row(slist)
   return sfilt
-
 
 
 verbose = 1
@@ -209,16 +215,29 @@ avmagobj, avmagerrobj = np.zeros([2, ntimes])
 
 for t, infile in enumerate(files):
   print infile
-  xobj[t], yobj[t], magobj[t], magerrobj[t], xcoo[t], ycoo[t], \
-    magin[t], magerrin[t], mjd[t] = readtrippyfile(infile)  # noqa E127
+  (xobj[t], yobj[t], magobj[t], magerrobj[t], xcoo[t], ycoo[t],
+   magin[t], magerrin[t], mjd[t]) = readtrippyfile(infile)
 
 '''
-Stop using any objects that don't have magnitudes in all appertures.
+Stop using any objects that don't have magnitudes in all frames.
 '''
 xcat, ycat, mag, magerr = trimcatalog_unwrap(xcoo, ycoo, magin, magerrin)
 useobj = mag[:, 0] < 30
 nobj = np.shape(mag)[0]
 objects = np.arange(nobj)
+
+'''
+Check whether the stars are in the SDSS catalogue.
+If enough are, stop using those that are not.
+'''
+sdss = sdss_check(xcat, ycat)
+insdss = sdss['nDetect'] > 0
+nsdss = len(np.where(insdss)[0])
+if nsdss >= 10:
+  usesdss = True
+  useobj[np.invert(insdss)] = False
+else:
+  usesdss = False
 
 '''
 Calculate the average again,  using only the objects that we want.
@@ -230,6 +249,7 @@ for t, time in enumerate(mjd):
   Calculate the magnitude of all stars relative to the average.
   '''
   rmag[t, :] = mag[:, t] - avmag[t]
+
 
 '''
 Allow user to weed out any variable stars.
