@@ -231,6 +231,8 @@ Check whether the stars are in the SDSS catalogue.
 If enough are, stop using those that are not.
 '''
 sdss = sdss_check(xcat, ycat)
+sdss_mag = np.array(sdss['psfMag_r'])
+sdss_magerr = np.array(sdss['psfMagErr_r'])
 insdss = sdss['nDetect'] > 0
 nsdss = len(np.where(insdss)[0])
 if nsdss >= 10:
@@ -293,7 +295,6 @@ Calculate the magnitude of all stars relative to the average.
 for t, time in enumerate(mjd):
   avmag[t], avmagerr[t] = averagemag(mag[:, t], magerr[:, t], 1, useobj)
   rmag[t, :] = mag[:, t] - avmag[t]
-
 '''Plot the magnitude of objects as a function of time,
    for each aperture size.
    Also print the standard deviation of the mag for each star.'''
@@ -304,25 +305,16 @@ scaterr = plotscatter([1], mjd, np.array([rmag.T]).T, useobj,
 print "Mean |           | {0:3.0f}".format(np.mean(scaterr[:]) * 1000)
 print "Max  |           | {0:3.0f}".format(np.max(scaterr[:]) * 1000)
 
-# Now read in measured object
+'''
+Now read in measured object and correct it.
+'''
 tnomag, tnomagerr = magobj.copy(), magerrobj.copy()
 plt.errorbar(mjd, tnomag[:], tnomagerr[:])
-plt.errorbar(mjd, tnomag[:] - avmag[:], tnomagerr[:] + scaterr[:, 0])
-
-plt.errorbar(mjd, tnomag[:], tnomagerr[:])
 plt.errorbar(mjd, avmag[:], scaterr[:, 0])
-plt.errorbar(mjd, 12 + tnomag[:] - avmag[:], tnomagerr[:] + scaterr[:, 0])
 correltnomag = np.array([(tnomag - avmag)[t] for t, time in enumerate(mjd)])
-plt.errorbar(mjd, 10 + correltnomag, tnomagerr[:] + scaterr[:, 0], lw=1,
-             capsize=20, elinewidth=3)
-
-plt.figure()
-[plt.errorbar(mjd, rmag[:, i], magerr[i, :] + scaterr[:, 0], lw=useobj[i]
-              ) for i in objects[useobj]]
-plt.errorbar(mjd, correltnomag, tnomagerr[:] + scaterr[:, 0], lw=1,
-             capsize=20, elinewidth=3)
-
-plt.show()
+plt.errorbar(mjd, np.mean(avmag) + correltnomag, tnomagerr[:] + scaterr[:, 0],
+             lw=1, capsize=20, elinewidth=3)
+plt.gca().invert_yaxis()
 
 plt.figure()
 trippyerr = (tnomagerr ** 2 + scaterr[:, 0] ** 2) ** 0.5
@@ -335,26 +327,53 @@ plt.xlabel('Time (MJD)')
 plt.ylabel(r'$\Delta \mathrm{mag}$ (mag-mean)')
 plt.show()
 
+'''
+Calculate the sdss correction, if using sdss.
+'''
+avsdss = np.mean(sdss_mag[useobj])
+delta_sdss = avsdss - avmag
+if usesdss:
+  mag_correction = avmag + delta_sdss
+  mag_star_mean = np.mean((rmag.T + mag_correction)[useobj], 1)
+  mag_correction_err = np.std(mag_star_mean - sdss_mag[useobj])
+else:
+  mag_correction = -np.mean(trippymag)
+  mag_star_mean = 0
+  mag_correction_err = 1
+
+tnomag_corrected = trippymag + mag_correction
+tnomagerr_corrected = trippyerr
+tnomag_corrected_err = mag_correction_err
+
 calmagfil = open('calibratedmags.txt', 'w')
-print "#Odo   mjd              magnitude        dmagnitude"
-calmagfil.write("#Odo   mjd              magnitude        dmagnitude\n")
+print "#Odo          mjd              magnitude        " + \
+      "dmagnitude       Calibration_err"
+calmagfil.write("#Odo          mjd              magnitude        " +
+                "dmagnitude       Calibration_err\n")
 for t, infile in enumerate(files):
   print "{0:13s} {1:16.10f} ".format(infile, mjd[t]) + \
-        "{0:16.13f} {1:16.13f}".format((trippymag - np.mean(trippymag))[t],
-                                       trippyerr[t])
-  calmagfil.write("{0:13s} {1:16.10f} {2:16.13f} {3:16.13f}\n"
-                  .format(infile, mjd[t], (trippymag - np.mean(trippymag))[t],
-                          trippyerr[t]))
-calmagfil.close()
+        "{0:16.13f} {1:16.13f} {2:16.13f}".format(tnomag_corrected[t],
+                                                  tnomagerr_corrected[t],
+                                                  tnomag_corrected_err)
+  calmagfil.write("{0:13s} {1:16.10f} {2:16.13f} {3:16.13f} {4:16.13f}\n"
+                  .format(infile, mjd[t], tnomag_corrected[t],
+                          tnomagerr_corrected[t], tnomag_corrected_err))
 
+calmagfil.close()
 calstarfil = open('calibrationstars.txt', 'w')
-print "#xcoo             ycoo            mag               dmag"
-calstarfil.write("#xcoo             ycoo            mag               dmag\n")
+print "#xcoo            ycoo             mag              dmag" + \
+      "             sdss_mag         sdss_dmag"
+calstarfil.write("#xcoo            ycoo             ccd_mag          " +
+                 "ccd_dmag         sdss_mag         sdss_dmag\n")
 for i, j in enumerate(objects[useobj]):
   print "{0:16.11f} {1:16.11f} ".format(xcat[j], ycat[j]) + \
-        "{0:16.13f} {1:16.13f}".format(np.mean(mag[j]),
-                                       np.sum(magerr[j] ** 2) ** 0.5)
-  calstarfil.write("{0:16.11f} {1:16.11f} {2:16.13f} {3:16.13f}\n"
+        "{0:16.13f} {1:16.13f} ".format(np.mean(mag[j]),
+                                        np.sum(magerr[j] ** 2) ** 0.5) + \
+        "{0:16.13f} {1:16.13f}".format(sdss_mag[j], sdss_magerr[j])
+  calstarfil.write("{0:16.11f} {1:16.11f} {2:16.13f} {3:16.13f} "
                    .format(xcat[j], ycat[j], np.mean(mag[j]),
-                           np.sum(magerr[j] ** 2) ** 0.5))
+                           np.sum(magerr[j] ** 2) ** 0.5) +
+                   "{0:16.13f} {1:16.13f}\n".format(sdss_mag[j],
+                                                    sdss_magerr[j]))
+
 calstarfil.close()
