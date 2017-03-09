@@ -2,13 +2,22 @@
 '''
 Photcor callibrates the photometry relative to stars
 that are vissible in all frames.
+
+Chagelog: see git log.
+
+Originally, this module could use several different aperture sizes at once.
+This was abandoned, but not removed, so some functions still have a weird
+structure as a result of this. Sorry.
+A lot has been added and edited since that time, but at least the functions
+with an "aperture" or "naperture" argument should still work with
+multiple apertures, if that's ever of interest.
 '''
 import re
 import glob
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy import coordinates as coords
-from astropy.table.table import Table as astroTable
+from astropy.table.table import Table as AstroTable
 from astropy.wcs import WCS
 from astroquery.sdss import SDSS
 
@@ -74,9 +83,10 @@ def plotapcor(allobjects, useobject, aperture, magnitude,
   plt.show()
 
 
-def printscatter(useindex, x, y, relmagnitude):
+def printscatter(useobject, x, y, relmagnitude):
   '''Print the scatter of each star across exposures'''
   maxi, maxstd, numsource = 0, 0, 0
+  useindex = np.arange(len(useobject))[useobject]
   for ii in useindex:
     numsource += 1
     print " {0:3d} | {1:4.0f} {2:4.0f} |".format(ii, x[ii], y[ii]),
@@ -94,9 +104,10 @@ def printscatter(useindex, x, y, relmagnitude):
   return maxi, maxstd, numsource
 
 
-def plotscatter(aperture, alltimes, relmagnitude, useobject, magerror, x, y):
+def plotscatter(aperture, alltimes, relmagnitude, useobject,
+                magerror, x, y, verbosity=True):
   '''Plot the scatter'''
-  scattererror = np.zeros([len(alltimes), len(aperture)])
+  scattererr = np.zeros([len(alltimes), len(aperture)])
   for jj in np.arange(len(aperture)):
     ax3 = plt.subplot2grid((2, 3), (1, 0), colspan=2)
     ax4 = plt.subplot2grid((2, 3), (0, 0), colspan=2)
@@ -110,16 +121,19 @@ def plotscatter(aperture, alltimes, relmagnitude, useobject, magerror, x, y):
                            for ii in np.arange(len(useobject))]).T
     [ax4.errorbar(alltimes, scattermag[:, ii], magerror[:, ii, jj],
                   lw=useobject[ii], zorder=2) for ii in useindex]
-    scattererror[:, jj] = [np.nanstd(scattermag[tt, useindex])
-                           for tt in np.arange(len(alltimes))]
-    ax4.errorbar(alltimes, np.zeros(len(alltimes)), scattererror[:, jj], lw=0,
+    scattererr[:, jj] = [np.nanstd(scattermag[tt, useindex])
+                         for tt in np.arange(len(alltimes))]
+    ax4.errorbar(alltimes, np.zeros(len(alltimes)), scattererr[:, jj], lw=0,
                  capsize=20, elinewidth=0, color='k', zorder=1)
     ax4.set_xlabel(aperture[jj])
     [ax5.plot(x[ii], y[ii], 'o', ms=np.std(scattermag[:, ii]) * 300, alpha=0.3
               ) for ii in useindex]
     ax5.axis([0, 2048, 0, 4176])
+    if verbosity:
+      print "Mean |           | {0:3.0f}".format(np.mean(scattererr[:]) * 1000)
+      print "Max  |           | {0:3.0f}".format(np.max(scattererr[:]) * 1000)
     plt.show()
-  return scattererror
+  return scattererr
 
 
 def trimcatalog(xstar, ystar, magstar, dmagstar):
@@ -182,7 +196,7 @@ def sdss_check(x, y):
     pos = [pos]
   table_fields = ['RA', 'Dec', 'psfMag_r', 'psfMagErr_r',
                   'psffwhm_r', 'nDetect', 'X_pixel', 'Y_pixel']
-  sfilt = astroTable(names=table_fields)
+  sfilt = AstroTable(names=table_fields)
   for index, position in enumerate(pos):
     sfull = SDSS.query_region(position, radius='1arcsec', data_release=13,
                               photoobj_fields=table_fields[:-2])
@@ -201,7 +215,122 @@ def sdss_check(x, y):
   return sfilt
 
 
-verbose = 1
+def print_tno_file(calmagfile, odometer, julian, corrected,
+                   error, error_on_correction):
+  '''
+  Write a file with the calibrated TNO magnitudes.
+  '''
+  calfile = open(calmagfile, 'w')
+  print "#Odo          mjd              magnitude        " + \
+        "dmagnitude       Calibration_err"
+  calfile.write("#Odo          mjd              magnitude        " +
+                "dmagnitude       Calibration_err\n")
+  for j, odo in enumerate(odometer):
+    print "{0:13s} {1:16.10f} ".format(odo, julian[j]) + \
+          "{0:16.13f} {1:16.13f} {2:16.13f}".format(corrected[j],
+                                                    error[j],
+                                                    error_on_correction)
+    calfile.write("{0:13s} {1:16.10f} {2:16.13f} {3:16.13f} {4:16.13f}\n"
+                  .format(odo, julian[j], corrected[j],
+                          error[j], error_on_correction))
+  calfile.close()
+
+
+def print_stars_file(calstarfile, useobjects,
+                     xcoord, ycoord, magnitude, magerror,
+                     sdss_magnitude, sdss_magerror):
+  '''
+  Print the file with the calibration stars used.
+  '''
+  calfile = open(calstarfile, 'w')
+  print "#xcoo            ycoo             mag              dmag" + \
+        "             sdss_mag         sdss_dmag"
+  calfile.write("#xcoo            ycoo             ccd_mag          " +
+                "ccd_dmag         sdss_mag         sdss_dmag\n")
+  for j in useobjects:
+    print "{0:16.11f} {1:16.11f} ".format(xcoord[j], ycoord[j]) + \
+          "{0:16.13f} {1:16.13f} ".format(np.mean(magnitude[j]),
+                                          np.sum(magerror[j] ** 2) ** 0.5) + \
+          "{0:16.13f} {1:16.13f}".format(sdss_magnitude[j], sdss_magerror[j])
+    calfile.write("{0:16.11f} {1:16.11f} {2:16.13f} {3:16.13f} "
+                  .format(xcoord[j], ycoord[j], np.mean(magnitude[j]),
+                          np.sum(magerror[j] ** 2) ** 0.5) +
+                  "{0:16.13f} {1:16.13f}\n".format(sdss_magnitude[j],
+                                                   sdss_magerror[j]))
+  calfile.close()
+
+
+def calculate_corrected_TNO_mags(reduced_star_mags, ccd_average,
+                                 reduced_tno_mags, tno_mags_error,
+                                 usecatalogue, catalogue_magnitudes):
+  '''
+  Calculate the corrected TNO magnitudes.
+  Calibrate to a catalogue, if possible, otherwise calibrate to average = 0.
+  '''
+  catalogue_average = np.mean(catalogue_magnitudes)
+  delta_averages = catalogue_average - ccd_average
+  if usecatalogue:
+    mag_correction = ccd_average + delta_averages
+    mag_star_mean = np.mean((reduced_star_mags + mag_correction), 1)
+    mag_correction_err = np.std(mag_star_mean - catalogue_magnitudes)
+  else:
+    mag_correction = -np.mean(reduced_tno_mags)
+    mag_star_mean = 0
+    mag_correction_err = np.nan
+  tno_corrected = trippymag + mag_correction
+  tnoerr_corrected = tno_mags_error
+  tno_corrected_err = mag_correction_err
+  return tno_corrected, tnoerr_corrected, tno_corrected_err
+
+
+def StarInspector(useobject, xstar, ystar, julian, magnitude, magerror,
+                  autokill=False):
+  '''
+  Allow user to weed out any variable stars.
+  autokill=True automatically kills the most variable star iteratively until
+  there are less than 25 stars or the maximum stddev is <=0.025 mag.
+  '''
+  yn = 'Yes'
+  times = np.where(julian)[0]
+  while not ('n' in yn) | ('N' in yn):
+    average, _ = np.array([averagemag(magnitude[:, j], magerror[:, j],
+                                      1, useobject) for j in times]).T
+    reduced_mag = (magnitude - average).T
+    print "Star |  x    y   | Standard deviation (milli-mags)"
+    imax, stdmax, nsource = printscatter(useobject, xstar, ystar,
+                                         np.array([reduced_mag.T]).T)
+    if not ('n' in yn) | ('N' in yn):
+      if autokill & (nsource > 25) & (stdmax > 0.025):
+        killobj = imax
+      else:
+        scattererr = plotscatter([1], mjd, np.array([reduced_mag.T]).T,
+                                 useobject, np.array([magerror]).T,
+                                 xstar, ystar)
+        killobj = raw_input("Which star would you like to kill? " +
+                            "(# above,  n for none) ")
+      try:
+        kobj = int(killobj)
+        useobject[kobj] = False
+        magnitude[kobj, :] = np.nan
+        magerror[kobj, :] = np.nan
+        continue
+      except ValueError:
+        if ('n' in killobj) | ('N' in killobj):
+          break
+        else:
+          print "That's not a valid number!"
+          continue
+  average, _ = np.array([averagemag(magnitude[:, j], magerror[:, j],
+                                    1, useobject) for j in times]).T
+  reduced_mag = (magnitude - average).T
+  print "Star |  x    y   | Standard deviation (milli-mags)"
+  printscatter(useobject, xstar, ystar, np.array([reduced_mag.T]).T)
+  scattererr = plotscatter([1], julian, np.array([reduced_mag.T]).T, useobject,
+                           np.array([magerr]).T, xccd, yccd)
+  return useobject, scattererr
+
+
+verbose = True
 files = glob.glob("./a???.trippy")
 files.sort()
 ntimes = len(files)
@@ -209,7 +338,7 @@ xcoo = list(np.zeros(ntimes))
 ycoo, mag, magerr, rmag = xcoo[:], xcoo[:], xcoo[:], xcoo[:]
 magin, magerrin = xcoo[:], xcoo[:]
 avmag = np.zeros(ntimes)
-avmagerr, mjd = avmag.copy(), avmag.copy()
+mjd = avmag.copy()
 xobj, yobj, magobj, magerrobj, rmagobj = np.zeros([5, ntimes])
 avmagobj, avmagerrobj = np.zeros([2, ntimes])
 
@@ -219,9 +348,9 @@ for t, infile in enumerate(files):
    magin[t], magerrin[t], mjd[t]) = readtrippyfile(infile)
 
 '''
-Stop using any objects that don't have magnitudes in all frames.
+Don't use any objects that don't have magnitudes in all frames.
 '''
-xcat, ycat, mag, magerr = trimcatalog_unwrap(xcoo, ycoo, magin, magerrin)
+xccd, yccd, mag, magerr = trimcatalog_unwrap(xcoo, ycoo, magin, magerrin)
 useobj = mag[:, 0] < 30
 nobj = np.shape(mag)[0]
 objects = np.arange(nobj)
@@ -230,7 +359,7 @@ objects = np.arange(nobj)
 Check whether the stars are in the SDSS catalogue.
 If enough are, stop using those that are not.
 '''
-sdss = sdss_check(xcat, ycat)
+sdss = sdss_check(xccd, yccd)
 sdss_mag = np.array(sdss['psfMag_r'])
 sdss_magerr = np.array(sdss['psfMagErr_r'])
 insdss = sdss['nDetect'] > 0
@@ -242,68 +371,17 @@ else:
   usesdss = False
 
 '''
-Calculate the average again,  using only the objects that we want.
-'''
-rmag = np.zeros(np.shape(mag)).T
-for t, time in enumerate(mjd):
-  avmag[t], avmagerr[t] = averagemag(mag[:, t], magerr[:, t], 1, useobj)
-  '''
-  Calculate the magnitude of all stars relative to the average.
-  '''
-  rmag[t, :] = mag[:, t] - avmag[t]
-
-
-'''
-Allow user to weed out any variable stars.
-'''
-yn = 'Yes'
-autokill = True
-while not ('n' in yn) | ('N' in yn):
-  for t, time in enumerate(mjd):
-    avmag[t], avmagerr[t] = averagemag(mag[:, t], magerr[:, t], 1, useobj)
-    rmag[t, :] = mag[:, t] - avmag[t]
-  print "Star |  x    y   | Standard deviation (milli-mags)"
-  imax, stdmax, nsource = printscatter(objects[useobj],
-                                       xcat, ycat, np.array([rmag.T]).T)
-  if not ('n' in yn) | ('N' in yn):
-    if autokill & (nsource > 25) & (stdmax > 0.025):
-      killobj = imax
-    else:
-      scaterr = plotscatter([1], mjd, np.array([rmag.T]).T, useobj,
-                            np.array([magerr]).T, xcat, ycat)
-      print "Mean |           | {0:3.0f}".format(np.mean(scaterr[:]) * 1000)
-      print "Max  |           | {0:3.0f}".format(np.max(scaterr[:]) * 1000)
-      killobj = raw_input("Which star would you like to kill? " +
-                          "(# above,  n for none) ")
-    try:
-      kobj = int(killobj)
-      useobj[kobj] = False
-      mag[kobj, :] = np.nan
-      magerr[kobj, :] = np.nan
-#      yn = raw_input("Are there more stars you would like to ignore? (Y/n) ")
-      continue
-    except ValueError:
-      if ('n' in killobj) | ('N' in killobj):
-        break
-      else:
-        print "That's not a valid number!"
-        continue
-
-'''
+Calculate the average,  using only the objects that we want.
 Calculate the magnitude of all stars relative to the average.
 '''
-for t, time in enumerate(mjd):
-  avmag[t], avmagerr[t] = averagemag(mag[:, t], magerr[:, t], 1, useobj)
-  rmag[t, :] = mag[:, t] - avmag[t]
-'''Plot the magnitude of objects as a function of time,
-   for each aperture size.
-   Also print the standard deviation of the mag for each star.'''
-print "Star |  x    y   | Standard deviation (milli-mags)"
-printscatter(objects[useobj], xcat, ycat, np.array([rmag.T]).T)
-scaterr = plotscatter([1], mjd, np.array([rmag.T]).T, useobj,
-                      np.array([magerr]).T, xcat, ycat)
-print "Mean |           | {0:3.0f}".format(np.mean(scaterr[:]) * 1000)
-print "Max  |           | {0:3.0f}".format(np.max(scaterr[:]) * 1000)
+avmag, _ = np.array([averagemag(mag[:, t], magerr[:, t], 1, useobj)
+                     for t in np.where(mjd)[0]]).T
+rmag = (mag - avmag).T
+
+'''
+Inspect the stars and get rid of any variable ones.
+'''
+useobj, scaterr = StarInspector(useobj, xccd, yccd, mjd, mag, magerr, True)
 
 '''
 Now read in measured object and correct it.
@@ -327,53 +405,13 @@ plt.xlabel('Time (MJD)')
 plt.ylabel(r'$\Delta \mathrm{mag}$ (mag-mean)')
 plt.show()
 
-'''
-Calculate the sdss correction, if using sdss.
-'''
-avsdss = np.mean(sdss_mag[useobj])
-delta_sdss = avsdss - avmag
-if usesdss:
-  mag_correction = avmag + delta_sdss
-  mag_star_mean = np.mean((rmag.T + mag_correction)[useobj], 1)
-  mag_correction_err = np.std(mag_star_mean - sdss_mag[useobj])
-else:
-  mag_correction = -np.mean(trippymag)
-  mag_star_mean = 0
-  mag_correction_err = 1
+tnomag_corrected, tnomagerr_corrected, tnomag_corrected_err \
+    = calculate_corrected_TNO_mags(rmag.T[useobj], avmag, trippymag, trippyerr,
+                                   usesdss, sdss_mag[useobj])
 
-tnomag_corrected = trippymag + mag_correction
-tnomagerr_corrected = trippyerr
-tnomag_corrected_err = mag_correction_err
+print_tno_file('calibratedmags.txt', files, mjd, tnomag_corrected,
+               tnomagerr_corrected, tnomag_corrected_err)
 
-calmagfil = open('calibratedmags.txt', 'w')
-print "#Odo          mjd              magnitude        " + \
-      "dmagnitude       Calibration_err"
-calmagfil.write("#Odo          mjd              magnitude        " +
-                "dmagnitude       Calibration_err\n")
-for t, infile in enumerate(files):
-  print "{0:13s} {1:16.10f} ".format(infile, mjd[t]) + \
-        "{0:16.13f} {1:16.13f} {2:16.13f}".format(tnomag_corrected[t],
-                                                  tnomagerr_corrected[t],
-                                                  tnomag_corrected_err)
-  calmagfil.write("{0:13s} {1:16.10f} {2:16.13f} {3:16.13f} {4:16.13f}\n"
-                  .format(infile, mjd[t], tnomag_corrected[t],
-                          tnomagerr_corrected[t], tnomag_corrected_err))
-
-calmagfil.close()
-calstarfil = open('calibrationstars.txt', 'w')
-print "#xcoo            ycoo             mag              dmag" + \
-      "             sdss_mag         sdss_dmag"
-calstarfil.write("#xcoo            ycoo             ccd_mag          " +
-                 "ccd_dmag         sdss_mag         sdss_dmag\n")
-for i, j in enumerate(objects[useobj]):
-  print "{0:16.11f} {1:16.11f} ".format(xcat[j], ycat[j]) + \
-        "{0:16.13f} {1:16.13f} ".format(np.mean(mag[j]),
-                                        np.sum(magerr[j] ** 2) ** 0.5) + \
-        "{0:16.13f} {1:16.13f}".format(sdss_mag[j], sdss_magerr[j])
-  calstarfil.write("{0:16.11f} {1:16.11f} {2:16.13f} {3:16.13f} "
-                   .format(xcat[j], ycat[j], np.mean(mag[j]),
-                           np.sum(magerr[j] ** 2) ** 0.5) +
-                   "{0:16.13f} {1:16.13f}\n".format(sdss_mag[j],
-                                                    sdss_magerr[j]))
-
-calstarfil.close()
+print_stars_file('calibrationstars.txt', objects[useobj],
+                 xccd, yccd, mag, magerr, sdss_mag, sdss_magerr)
+#
