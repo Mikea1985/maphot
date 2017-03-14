@@ -20,6 +20,7 @@ from astropy import coordinates as coords
 from astropy.table.table import Table as AstroTable
 from astropy.wcs import WCS
 from astroquery.sdss import SDSS
+from astroquery.vizier import Vizier
 
 
 def readtrippyfile(filename):
@@ -215,6 +216,52 @@ def sdss_check(x, y):
   return sfilt
 
 
+def usno_check(x, y):
+  """
+  Check whether stars are in the USNO catalogue.
+  This function accepts either a single x and y coordinate,
+  or an array of each.
+  """
+  w = WCS('a100.fits')
+  sfilt = []
+  # Check which format x and y are given in.
+  if not (isinstance(x, (np.ndarray, list, float, int)) &
+          isinstance(y, (np.ndarray, list, float, int)) &
+          (np.shape(x) == np.shape(y))):
+    print 'Error: Need a set of pixel coordinates.'
+    print '       X and Y must have same non-zero size.'
+    raise TypeError
+  x = [x] if (np.shape(x) == ()) else x
+  y = [y] if (np.shape(y) == ()) else y
+  lon, lat = w.all_pix2world(x, y, 1)
+  pos = coords.SkyCoord(lon, lat, unit="deg")
+  if len(pos) == 1:
+    pos = [pos]
+  table_fields = ['RAJ2000', 'DEJ2000', 'R2mag', 'Ndet', 'X_pixel', 'Y_pixel']
+  sfilt = AstroTable(names=table_fields)
+  vizier = Vizier(columns=table_fields, catalog="I/284")
+  for index, position in enumerate(pos):
+    try:
+      sfull = vizier.query_region(position, radius='2s')[0][table_fields[:-2]]
+      sline = (sfull[np.where((sfull['Ndet'] > 0) &
+                              (sfull['R2mag'] > -99))[0]][0])
+      slist = [sl for sl in sline]
+      slist.append(x[index])
+      slist.append(y[index])
+      sfilt.add_row(slist)
+    except TypeError:
+      print "Star at " + str(position)[39:-1] + " not found in USNO :-(."
+      slist = np.zeros(len(table_fields))
+      slist[-2:] = x[index], y[index]
+      sfilt.add_row(slist)
+    except IndexError:
+      print "Star at " + str(position)[39:-1] + " has no USNO magnitude :-(."
+      slist = np.zeros(len(table_fields))
+      slist[-2:] = x[index], y[index]
+      sfilt.add_row(slist)
+  return sfilt
+
+
 def print_tno_file(calmagfile, odometer, julian, corrected,
                    error, error_on_correction):
   '''
@@ -291,10 +338,8 @@ def StarInspector(useobject, xstar, ystar, julian, magnitude, magerror,
   there are less than 25 stars or the maximum stddev is <=0.025 mag.
   '''
   yn = 'Yes'
-  times = np.where(julian)[0]
   while not ('n' in yn) | ('N' in yn):
-    average, _ = np.array([averagemag(magnitude[:, j], magerror[:, j],
-                                      1, useobject) for j in times]).T
+    average = np.mean(magnitude[useobject], 0)
     reduced_mag = (magnitude - average).T
     print "Star |  x    y   | Standard deviation (milli-mags)"
     imax, stdmax, nsource = printscatter(useobject, xstar, ystar,
@@ -320,14 +365,13 @@ def StarInspector(useobject, xstar, ystar, julian, magnitude, magerror,
         else:
           print "That's not a valid number!"
           continue
-  average, _ = np.array([averagemag(magnitude[:, j], magerror[:, j],
-                                    1, useobject) for j in times]).T
+  average = np.mean(magnitude[useobj], 0)
   reduced_mag = (magnitude - average).T
   print "Star |  x    y   | Standard deviation (milli-mags)"
   printscatter(useobject, xstar, ystar, np.array([reduced_mag.T]).T)
   scattererr = plotscatter([1], julian, np.array([reduced_mag.T]).T, useobject,
                            np.array([magerr]).T, xccd, yccd)
-  return useobject, scattererr
+  return useobject, scattererr, average, reduced_mag
 
 
 verbose = True
@@ -371,17 +415,10 @@ else:
   usesdss = False
 
 '''
-Calculate the average,  using only the objects that we want.
-Calculate the magnitude of all stars relative to the average.
-'''
-avmag, _ = np.array([averagemag(mag[:, t], magerr[:, t], 1, useobj)
-                     for t in np.where(mjd)[0]]).T
-rmag = (mag - avmag).T
-
-'''
 Inspect the stars and get rid of any variable ones.
 '''
-useobj, scaterr = StarInspector(useobj, xccd, yccd, mjd, mag, magerr, True)
+useobj, scaterr, avmag, rmag = StarInspector(useobj, xccd, yccd, mjd,
+                                             mag, magerr, True)
 
 '''
 Now read in measured object and correct it.
