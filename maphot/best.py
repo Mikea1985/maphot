@@ -66,13 +66,24 @@ def findBestImage(imageArray, **kwargs):
   if kwargs:
     raise TypeError('Unexpected **kwargs: %r' % kwargs)
   zeros = np.zeros(len(imageArray))
+  fluxlim = np.zeros(len(imageArray))
   for ii, frameID in enumerate(imageArray):
     hans = pyf.open(frameID + '.fits')
     headers = hans[0].header
-    zeros[ii] = headers['MAGZERO']
-  bestZeroID = np.argmax(zeros)
+    try:
+      zeros[ii] = headers['MAGZERO']
+    except KeyError:
+      zeros[ii] = -666
+      print("Frame " + str(frameID) + " did not have MAGZERO keyword."
+            if verbose else "")
+    fluxlim[ii] = headers['FLUXLIM']
+  if np.max(zeros) > -666:
+    bestZeroID = np.argmax(zeros)
+  else:
+    print("No frames had MAGZERO keyword." if verbose else "")
+    bestZeroID = np.argmax(fluxlim)
   bestFullCatalogue = getCatalogue(imageArray[bestZeroID])
-  print("Image" + str(bestZeroID) + " is best." if verbose else "")
+  print("Image" + str(bestZeroID) + " is best.")
   return bestZeroID, bestFullCatalogue
 #bestImage, bestCatalogue = findBestImage(['a' + str(ii)
 #                                          for ii in range(100, 123)])
