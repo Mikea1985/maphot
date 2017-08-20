@@ -268,23 +268,35 @@ def usno_check(x, y):
   return sfilt
 
 
-def print_tno_file(calmagfile, odometer, julian, corrected,
-                   error, magzeroerr, magzero):
+def print_tno_file(objname, odometer, julian, corrected,
+                   error, magcalerr, magzero):
   '''
   Write a file with the calibrated TNO magnitudes.
   '''
+  calmagfile = objname + '.txt'
+  texmagfile = objname + '.tex'
   calfile = open(calmagfile, 'w')
+  texfile = open(texmagfile, 'w')
   print("#Odo          mjd              magnitude        " +
-        "dmagnitude       zero-point       Calibration_err")
+        "dmagnitude       Calibration_err  zero-point")
   calfile.write("#Odo          mjd              magnitude        " +
-                "dmagnitude       zero-point       calibration_err\n")
+                "dmagnitude       calibration_err  zero-point\n")
+  texfile.write("%mjd                magnitude             " +
+                "dmagnitude           calibration_err    zero-point\n")
+  texfile.write(r"\midrule" + "\n")
   for j, odo in enumerate(odometer):
     print("{0:13s} {1:16.10f} ".format(odo, julian[j]) +
           "{0:16.13f} {1:16.13f} ".format(corrected[j], error[j]) +
-          "{0:16.13f} {1:16.13f}".format(magzero[j], magzeroerr))
+          "{0:16.13f} {1:16.13f}".format(magcalerr, magzero[j]))
     calfile.write("{0:13s} {1:16.10f} ".format(odo, julian[j]) +
                   "{0:16.13f} {1:16.13f} ".format(corrected[j], error[j]) +
-                  "{0:16.13f} {1:16.13f} \n".format(magzero[j], magzeroerr))
+                  "{0:16.13f} {1:16.13f} \n".format(magcalerr, magzero[j]))
+    texfile.write("{0:16.10f} & ".format(julian[j]) +
+                  r"${0:16.13f} \pm ".format(corrected[j]) +
+                  r"{0:16.13f} \pm ".format(error[j]) +
+                  "{0:16.13f}$ & ".format(magcalerr) +
+                  "{0:16.13f} \n".format(magzero[j]))
+  texfile.write(r"\midrule" + "\n")
   calfile.close()
 
 
@@ -500,7 +512,7 @@ systematic_err = np.mean(unp.uarray(zeros, zeroserr)).std_dev
 mag_done = mag + ddzero
 magerr_done = (magerr ** 2 + scaterr[:, 0] ** 2) ** 0.5 + systematic_err
 
-print_tno_file('calibratedmags.txt', files, mjd, magobj_done,
+print_tno_file('calibratedmags', files, mjd, magobj_done,
                magerrobj_done, systematic_err, zeros_corrected)
 
 print_stars_file('calibrationstars.txt', objects[useobj],
