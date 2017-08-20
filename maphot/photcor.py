@@ -414,6 +414,7 @@ zeros = avmag.copy()
 zeroserr = avmag.copy()
 xobj, yobj, magobj, magerrobj, rmagobj = np.zeros([5, ntimes])
 avmagobj, avmagerrobj = np.zeros([2, ntimes])
+zero_default = 26.0
 
 for t, infile in enumerate(files):
   print infile
@@ -421,10 +422,13 @@ for t, infile in enumerate(files):
    magin[t], magerrin[t], mjd[t]) = readtrippyfile(infile)
   zeros[t], zeroserr[t] = readzeropoint(infile[:-7] + '.fits')
 
+if zero_default == 'None':
+  zeros_default = zeros
+
 '''
-Fix the zeropoint (don't use the default 26.0)
+Fix the zeropoint (don't use the default 26.0) # needed because I was stupid
 '''
-dzero = zeros - 26  # So real mag = measured + dzero # 26 because I am stupid
+dzero = zeros - zeros_default  # So real mag = measured + dzero
 magobj += dzero
 magin = (np.array(magin).T + dzero).T
 zeroserr[np.argwhere(zeroserr < 0.01)] = 0.01
@@ -462,7 +466,7 @@ useobj, scaterr, avmag, rmag = StarInspector(useobj, xccd, yccd, mjd,
 Calculate the zero-point correction.
 '''
 ddzero = np.mean(avmag) - avmag
-zeros_corrected = 26 + dzero + dzero
+zeros_corrected = zeros_default + dzero + dzero
 magobj_corrected = magobj + ddzero
 magerrobj_corrected = (magerrobj ** 2 + scaterr[:, 0] ** 2) ** 0.5
 
