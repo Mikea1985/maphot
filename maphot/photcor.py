@@ -19,9 +19,13 @@ import matplotlib.pyplot as plt
 from astropy import coordinates as coords
 from astropy.table.table import Table as AstroTable
 from astropy.wcs import WCS
+from astropy.io import fits
 from astroquery.sdss import SDSS
 from astroquery.vizier import Vizier
-
+#import uncertainties as u
+from uncertainties import unumpy as unp
+__author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
+              'mike.alexandersen@alumni.ubc.ca)')
 
 def readtrippyfile(filename):
   '''Use this function to read in trippy files.
@@ -263,45 +267,50 @@ def usno_check(x, y):
 
 
 def print_tno_file(calmagfile, odometer, julian, corrected,
-                   error, error_on_correction):
+                   error, magzeroerr, magzero):
   '''
   Write a file with the calibrated TNO magnitudes.
   '''
   calfile = open(calmagfile, 'w')
   print "#Odo          mjd              magnitude        " + \
-        "dmagnitude       Calibration_err"
+        "dmagnitude       zero-point       Calibration_err"
   calfile.write("#Odo          mjd              magnitude        " +
-                "dmagnitude       Calibration_err\n")
+                "dmagnitude       zero-point       calibration_err\n")
   for j, odo in enumerate(odometer):
     print "{0:13s} {1:16.10f} ".format(odo, julian[j]) + \
-          "{0:16.13f} {1:16.13f} {2:16.13f}".format(corrected[j],
-                                                    error[j],
-                                                    error_on_correction)
-    calfile.write("{0:13s} {1:16.10f} {2:16.13f} {3:16.13f} {4:16.13f}\n"
-                  .format(odo, julian[j], corrected[j],
-                          error[j], error_on_correction))
+          "{0:16.13f} {1:16.13f} ".format(corrected[j], error[j]) + \
+          "{0:16.13f} {1:16.13f}".format(magzero[j], magzeroerr)
+    calfile.write("{0:13s} {1:16.10f} ".format(odo, julian[j]) +
+                  "{0:16.13f} {1:16.13f} ".format(corrected[j], error[j]) +
+                  "{0:16.13f} {1:16.13f} \n".format(magzero[j], magzeroerr))
   calfile.close()
 
 
 def print_stars_file(calstarfile, useobjects,
-                     xcoord, ycoord, magnitude, magerror,
+                     xcoord, ycoord, r_magnitude, r_magerr,
+                     c_magnitude, c_magerr,
                      sdss_magnitude, sdss_magerror):
   '''
   Print the file with the calibration stars used.
   '''
   calfile = open(calstarfile, 'w')
-  print "#xcoo            ycoo             mag              dmag" + \
-        "             sdss_mag         sdss_dmag"
+  print "#xcoo            ycoo             mag              dmag          " + \
+        "   calibrated_mag   calibrated_dmag  sdss_mag         sdss_dmag"
   calfile.write("#xcoo            ycoo             ccd_mag          " +
-                "ccd_dmag         sdss_mag         sdss_dmag\n")
+                "ccd_dmag         calibrated_mag   calibrated_dmag  " +
+                "sdss_mag         sdss_dmag\n")
   for j in useobjects:
+    r_u = np.mean(unp.uarray(r_magnitude[j], r_magerr[j])).s
+    r_m = np.mean(unp.uarray(r_magnitude[j], r_magerr[j])).n
+    c_u = np.mean(unp.uarray(c_magnitude[j], c_magerr[j])).s
+    c_m = np.mean(unp.uarray(c_magnitude[j], c_magerr[j])).n
     print "{0:16.11f} {1:16.11f} ".format(xcoord[j], ycoord[j]) + \
-          "{0:16.13f} {1:16.13f} ".format(np.mean(magnitude[j]),
-                                          np.sum(magerror[j] ** 2) ** 0.5) + \
+          "{0:16.13f} {1:16.13f} ".format(r_m, r_u) + \
+          "{0:16.13f} {1:16.13f} ".format(c_m, c_u) + \
           "{0:16.13f} {1:16.13f}".format(sdss_magnitude[j], sdss_magerror[j])
     calfile.write("{0:16.11f} {1:16.11f} {2:16.13f} {3:16.13f} "
-                  .format(xcoord[j], ycoord[j], np.mean(magnitude[j]),
-                          np.sum(magerror[j] ** 2) ** 0.5) +
+                  .format(xcoord[j], ycoord[j], r_m, r_u) +
+                  "{0:16.13f} {1:16.13f} ".format(c_m, c_u) +
                   "{0:16.13f} {1:16.13f}\n".format(sdss_magnitude[j],
                                                    sdss_magerror[j]))
   calfile.close()
@@ -309,7 +318,8 @@ def print_stars_file(calstarfile, useobjects,
 
 def calculate_corrected_TNO_mags(reduced_star_mags, ccd_average,
                                  reduced_tno_mags, tno_mags_error,
-                                 usecatalogue, catalogue_magnitudes):
+                                 usecatalogue, catalogue_magnitudes,
+                                 trippymag):
   '''
   Calculate the corrected TNO magnitudes.
   Calibrate to a catalogue, if possible, otherwise calibrate to average = 0.
@@ -374,6 +384,23 @@ def StarInspector(useobject, xstar, ystar, julian, magnitude, magerror,
   return useobject, scattererr, average, reduced_mag
 
 
+def readzeropoint(filename):
+  '''
+  Reads the zeropoint of a file.
+  '''
+  hdulist = fits.open(filename)
+  magzero = hdulist[0].header['MAGZERO']
+  magzeroerr = hdulist[0].header['MAGZERO_RMS']
+  hdulist.close()
+  return magzero, magzeroerr
+
+
+###############################################################################
+## Functions above here. ######################################################
+###############################################################################
+## Main below here. ###########################################################
+###############################################################################
+
 verbose = True
 files = glob.glob("./a???.trippy")
 files.sort()
@@ -383,6 +410,8 @@ ycoo, mag, magerr, rmag = xcoo[:], xcoo[:], xcoo[:], xcoo[:]
 magin, magerrin = xcoo[:], xcoo[:]
 avmag = np.zeros(ntimes)
 mjd = avmag.copy()
+zeros = avmag.copy()
+zeroserr = avmag.copy()
 xobj, yobj, magobj, magerrobj, rmagobj = np.zeros([5, ntimes])
 avmagobj, avmagerrobj = np.zeros([2, ntimes])
 
@@ -390,9 +419,18 @@ for t, infile in enumerate(files):
   print infile
   (xobj[t], yobj[t], magobj[t], magerrobj[t], xcoo[t], ycoo[t],
    magin[t], magerrin[t], mjd[t]) = readtrippyfile(infile)
+  zeros[t], zeroserr[t] = readzeropoint(infile[:-7] + '.fits')
 
 '''
-Don't use any objects that don't have magnitudes in all frames.
+Fix the zeropoint (don't use the default 26.0)
+'''
+dzero = zeros - 26  # So real mag = measured + dzero # 26 because I am stupid
+magobj += dzero
+magin = (np.array(magin).T + dzero).T
+zeroserr[np.argwhere(zeroserr < 0.01)] = 0.01
+
+'''
+Don't use any stars that don't have magnitudes in all frames.
 '''
 xccd, yccd, mag, magerr = trimcatalog_unwrap(xcoo, ycoo, magin, magerrin)
 useobj = mag[:, 0] < 30
@@ -409,7 +447,7 @@ sdss_magerr = np.array(sdss['psfMagErr_r'])
 insdss = sdss['nDetect'] > 0
 nsdss = len(np.where(insdss)[0])
 if nsdss >= 10:
-  usesdss = True
+  usesdss = False
   useobj[np.invert(insdss)] = False
 else:
   usesdss = False
@@ -421,34 +459,45 @@ useobj, scaterr, avmag, rmag = StarInspector(useobj, xccd, yccd, mjd,
                                              mag, magerr, True)
 
 '''
+Calculate the zero-point correction.
+'''
+ddzero = np.mean(avmag) - avmag
+zeros_corrected = 26 + dzero + dzero
+magobj_corrected = magobj + ddzero
+magerrobj_corrected = (magerrobj ** 2 + scaterr[:, 0] ** 2) ** 0.5
+
+
+'''
 Now read in measured object and correct it.
 '''
-tnomag, tnomagerr = magobj.copy(), magerrobj.copy()
-plt.errorbar(mjd, tnomag[:], tnomagerr[:])
+plt.errorbar(mjd, magobj[:], magerrobj[:], fmt='--')
 plt.errorbar(mjd, avmag[:], scaterr[:, 0])
-correltnomag = np.array([(tnomag - avmag)[t] for t, time in enumerate(mjd)])
-plt.errorbar(mjd, np.mean(avmag) + correltnomag, tnomagerr[:] + scaterr[:, 0],
-             lw=1, capsize=20, elinewidth=3)
+correltnomag = np.array([(magobj - avmag)[t] for t, time in enumerate(mjd)])
+plt.errorbar(mjd, magobj_corrected, magerrobj_corrected,
+             lw=1, capsize=10, elinewidth=2)
 plt.gca().invert_yaxis()
 
 plt.figure()
-trippyerr = (tnomagerr ** 2 + scaterr[:, 0] ** 2) ** 0.5
-trippymag = correltnomag
-plt.errorbar(mjd, trippymag - np.mean(trippymag), trippyerr, marker='+', lw=0,
-             capsize=20, elinewidth=3, label='TRIPPy')
+plt.errorbar(mjd, magobj_corrected, magerrobj_corrected, marker='+', lw=0,
+             capsize=10, elinewidth=2, label='TRIPPy')
 plt.gca().invert_yaxis()
 plt.legend(loc='best')
 plt.xlabel('Time (MJD)')
 plt.ylabel(r'$\Delta \mathrm{mag}$ (mag-mean)')
 plt.show()
 
-tnomag_corrected, tnomagerr_corrected, tnomag_corrected_err \
-    = calculate_corrected_TNO_mags(rmag.T[useobj], avmag, trippymag, trippyerr,
-                                   usesdss, sdss_mag[useobj])
+magobj_done = magobj_corrected.copy()
+magerrobj_done = magerrobj_corrected.copy()
+systematic_err = np.mean(unp.uarray(zeros, zeroserr)).std_dev
+# Systematic error is technically not from averaging the zero points,
+# but this should be pretty close.
+mag_done = mag + ddzero
+magerr_done = (magerr ** 2 + scaterr[:, 0] ** 2) ** 0.5 + systematic_err
 
-print_tno_file('calibratedmags.txt', files, mjd, tnomag_corrected,
-               tnomagerr_corrected, tnomag_corrected_err)
+print_tno_file('calibratedmags.txt', files, mjd, magobj_done,
+               magerrobj_done, systematic_err, zeros_corrected)
 
 print_stars_file('calibrationstars.txt', objects[useobj],
-                 xccd, yccd, mag, magerr, sdss_mag, sdss_magerr)
+                 xccd, yccd, mag, magerr, mag_done, magerr_done,
+                 sdss_mag, sdss_magerr)
 #
