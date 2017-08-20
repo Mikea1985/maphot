@@ -12,6 +12,7 @@ A lot has been added and edited since that time, but at least the functions
 with an "aperture" or "naperture" argument should still work with
 multiple apertures, if that's ever of interest.
 '''
+from __future__ import print_function, division
 import re
 import glob
 import numpy as np
@@ -94,18 +95,18 @@ def printscatter(useobject, x, y, relmagnitude):
   useindex = np.arange(len(useobject))[useobject]
   for ii in useindex:
     numsource += 1
-    print " {0:3d} | {1:4.0f} {2:4.0f} |".format(ii, x[ii], y[ii]),
+    print(" {0:3d} | {1:4.0f} {2:4.0f} |".format(ii, x[ii], y[ii]), end='')
     for jj in np.arange(len(relmagnitude[0, 0, :])):
       stdrelmag = np.std(relmagnitude[:, ii, jj])
-      print "{0:3.0f}".format(stdrelmag * 1000),
+      print("{0:3.0f}".format(stdrelmag * 1000), end='')
     if stdrelmag > maxstd:
       maxstd = stdrelmag
       maxi = ii
-    print " "
-  print "----------------------"
-  print " {0:3d} | {1:4.0f} {2:4.0f} |".format(maxi, x[maxi], y[maxi]),
-  print "{0:3.0f} <- Max scatter".format(maxstd * 1000),
-  print " of {} sources.".format(numsource)
+    print(" ")
+  print("----------------------")
+  print(" {0:3d} | {1:4.0f} {2:4.0f} |".format(maxi, x[maxi], y[maxi]) +
+        " {0:3.0f} <- Max scatter".format(maxstd * 1000) +
+        " of {} sources.".format(numsource))
   return maxi, maxstd, numsource
 
 
@@ -135,8 +136,9 @@ def plotscatter(aperture, alltimes, relmagnitude, useobject,
               ) for ii in useindex]
     ax5.axis([0, 2048, 0, 4176])
     if verbosity:
-      print "Mean |           | {0:3.0f}".format(np.mean(scattererr[:]) * 1000)
-      print "Max  |           | {0:3.0f}".format(np.max(scattererr[:]) * 1000)
+      print("Mean |           | {0:3.0f}"
+            .format(np.mean(scattererr[:]) * 1000))
+      print("Max  |           | {0:3.0f}".format(np.max(scattererr[:]) * 1000))
     plt.show()
   return scattererr
 
@@ -190,8 +192,8 @@ def sdss_check(x, y):
   if not (isinstance(x, (np.ndarray, list, float, int)) &
           isinstance(y, (np.ndarray, list, float, int)) &
           (np.shape(x) == np.shape(y))):
-    print 'Error: Need a set of pixel coordinates.'
-    print '       X and Y must have same non-zero size.'
+    print('Error: Need a set of pixel coordinates.')
+    print('       X and Y must have same non-zero size.')
     raise TypeError
   x = [x] if (np.shape(x) == ()) else x
   y = [y] if (np.shape(y) == ()) else y
@@ -213,7 +215,7 @@ def sdss_check(x, y):
       slist.append(y[index])
       sfilt.add_row(slist)
     except TypeError:
-      print "Star at " + str(position)[39:-1] + " not found :-(."
+      print("Star at " + str(position)[39:-1] + " not found :-(.")
       slist = np.zeros(len(table_fields))
       slist[-2:] = x[index], y[index]
       sfilt.add_row(slist)
@@ -232,8 +234,8 @@ def usno_check(x, y):
   if not (isinstance(x, (np.ndarray, list, float, int)) &
           isinstance(y, (np.ndarray, list, float, int)) &
           (np.shape(x) == np.shape(y))):
-    print 'Error: Need a set of pixel coordinates.'
-    print '       X and Y must have same non-zero size.'
+    print('Error: Need a set of pixel coordinates.')
+    print('       X and Y must have same non-zero size.')
     raise TypeError
   x = [x] if (np.shape(x) == ()) else x
   y = [y] if (np.shape(y) == ()) else y
@@ -254,12 +256,12 @@ def usno_check(x, y):
       slist.append(y[index])
       sfilt.add_row(slist)
     except TypeError:
-      print "Star at " + str(position)[39:-1] + " not found in USNO :-(."
+      print("Star at " + str(position)[39:-1] + " not found in USNO :-(.")
       slist = np.zeros(len(table_fields))
       slist[-2:] = x[index], y[index]
       sfilt.add_row(slist)
     except IndexError:
-      print "Star at " + str(position)[39:-1] + " has no USNO magnitude :-(."
+      print("Star at " + str(position)[39:-1] + " has no USNO magnitude :-(.")
       slist = np.zeros(len(table_fields))
       slist[-2:] = x[index], y[index]
       sfilt.add_row(slist)
@@ -272,14 +274,14 @@ def print_tno_file(calmagfile, odometer, julian, corrected,
   Write a file with the calibrated TNO magnitudes.
   '''
   calfile = open(calmagfile, 'w')
-  print "#Odo          mjd              magnitude        " + \
-        "dmagnitude       zero-point       Calibration_err"
+  print("#Odo          mjd              magnitude        " +
+        "dmagnitude       zero-point       Calibration_err")
   calfile.write("#Odo          mjd              magnitude        " +
                 "dmagnitude       zero-point       calibration_err\n")
   for j, odo in enumerate(odometer):
-    print "{0:13s} {1:16.10f} ".format(odo, julian[j]) + \
-          "{0:16.13f} {1:16.13f} ".format(corrected[j], error[j]) + \
-          "{0:16.13f} {1:16.13f}".format(magzero[j], magzeroerr)
+    print("{0:13s} {1:16.10f} ".format(odo, julian[j]) +
+          "{0:16.13f} {1:16.13f} ".format(corrected[j], error[j]) +
+          "{0:16.13f} {1:16.13f}".format(magzero[j], magzeroerr))
     calfile.write("{0:13s} {1:16.10f} ".format(odo, julian[j]) +
                   "{0:16.13f} {1:16.13f} ".format(corrected[j], error[j]) +
                   "{0:16.13f} {1:16.13f} \n".format(magzero[j], magzeroerr))
@@ -294,8 +296,8 @@ def print_stars_file(calstarfile, useobjects,
   Print the file with the calibration stars used.
   '''
   calfile = open(calstarfile, 'w')
-  print "#xcoo            ycoo             mag              dmag          " + \
-        "   calibrated_mag   calibrated_dmag  sdss_mag         sdss_dmag"
+  print("#xcoo            ycoo             mag              dmag          " +
+        "   calibrated_mag   calibrated_dmag  sdss_mag         sdss_dmag")
   calfile.write("#xcoo            ycoo             ccd_mag          " +
                 "ccd_dmag         calibrated_mag   calibrated_dmag  " +
                 "sdss_mag         sdss_dmag\n")
@@ -304,10 +306,10 @@ def print_stars_file(calstarfile, useobjects,
     r_m = np.mean(unp.uarray(r_magnitude[j], r_magerr[j])).n
     c_u = np.mean(unp.uarray(c_magnitude[j], c_magerr[j])).s
     c_m = np.mean(unp.uarray(c_magnitude[j], c_magerr[j])).n
-    print "{0:16.11f} {1:16.11f} ".format(xcoord[j], ycoord[j]) + \
-          "{0:16.13f} {1:16.13f} ".format(r_m, r_u) + \
-          "{0:16.13f} {1:16.13f} ".format(c_m, c_u) + \
-          "{0:16.13f} {1:16.13f}".format(sdss_magnitude[j], sdss_magerror[j])
+    print("{0:16.11f} {1:16.11f} ".format(xcoord[j], ycoord[j]) +
+          "{0:16.13f} {1:16.13f} ".format(r_m, r_u) +
+          "{0:16.13f} {1:16.13f} ".format(c_m, c_u) +
+          "{0:16.13f} {1:16.13f}".format(sdss_magnitude[j], sdss_magerror[j]))
     calfile.write("{0:16.11f} {1:16.11f} {2:16.13f} {3:16.13f} "
                   .format(xcoord[j], ycoord[j], r_m, r_u) +
                   "{0:16.13f} {1:16.13f} ".format(c_m, c_u) +
@@ -351,7 +353,7 @@ def StarInspector(useobject, xstar, ystar, julian, magnitude, magerror,
   while not ('n' in yn) | ('N' in yn):
     average = np.mean(magnitude[useobject], 0)
     reduced_mag = (magnitude - average).T
-    print "Star |  x    y   | Standard deviation (milli-mags)"
+    print("Star |  x    y   | Standard deviation (milli-mags)")
     imax, stdmax, nsource = printscatter(useobject, xstar, ystar,
                                          np.array([reduced_mag.T]).T)
     if not ('n' in yn) | ('N' in yn):
@@ -373,11 +375,11 @@ def StarInspector(useobject, xstar, ystar, julian, magnitude, magerror,
         if ('n' in killobj) | ('N' in killobj):
           break
         else:
-          print "That's not a valid number!"
+          print("That's not a valid number!")
           continue
   average = np.mean(magnitude[useobj], 0)
   reduced_mag = (magnitude - average).T
-  print "Star |  x    y   | Standard deviation (milli-mags)"
+  print("Star |  x    y   | Standard deviation (milli-mags)")
   printscatter(useobject, xstar, ystar, np.array([reduced_mag.T]).T)
   scattererr = plotscatter([1], julian, np.array([reduced_mag.T]).T, useobject,
                            np.array([magerr]).T, xccd, yccd)
@@ -414,15 +416,15 @@ zeros = avmag.copy()
 zeroserr = avmag.copy()
 xobj, yobj, magobj, magerrobj, rmagobj = np.zeros([5, ntimes])
 avmagobj, avmagerrobj = np.zeros([2, ntimes])
-zero_default = 26.0
+zeros_default = 26.0
 
 for t, infile in enumerate(files):
-  print infile
+  print(infile)
   (xobj[t], yobj[t], magobj[t], magerrobj[t], xcoo[t], ycoo[t],
    magin[t], magerrin[t], mjd[t]) = readtrippyfile(infile)
   zeros[t], zeroserr[t] = readzeropoint(infile[:-7] + '.fits')
 
-if zero_default == 'None':
+if zeros_default == 'None':
   zeros_default = zeros
 
 '''
