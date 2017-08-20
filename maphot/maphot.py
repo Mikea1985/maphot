@@ -83,13 +83,15 @@ def getCatalogue(file_start):
   except IOError:
     try:
       scamp.makeParFiles.writeSex(file_start + '_fits.sex', minArea=3.0,
-                                  threshold=5.0, zpt=26.0, aperture=20.,
+                                  #threshold=5.0, zpt=26.0, aperture=20.,
+                                  threshold=5.0, zpt=MAGZERO, aperture=20.,
                                   min_radius=2.0, catalogType='FITS_LDAC',
                                   saturate=55000)
       scamp.makeParFiles.writeConv()
       scamp.makeParFiles.writeParam(numAps=1)
       scamp.makeParFiles.writeSex(file_start + '_ascii.sex', minArea=3.0,
-                                  threshold=5.0, zpt=26.0, aperture=20.,
+                                  #threshold=5.0, zpt=26.0, aperture=20.,
+                                  threshold=5.0, zpt=MAGZERO, aperture=20.,
                                   min_radius=2.0, catalogType='ASCII',
                                   saturate=55000)
       scamp.makeParFiles.writeConv()
@@ -234,6 +236,7 @@ with pyf.open(inputFile) as han:
   data = han[0].data
   header = han[0].header
   EXPTIME = header['EXPTIME']
+  MAGZERO = header['MAGZERO']
   try:
     MJD = header['MJD']
   except:
@@ -356,7 +359,8 @@ for xcat, ycat in np.array(list(zip(catalog_phot['XWIN_IMAGE'],
                                     catalog_phot['YWIN_IMAGE']))):
   phot = pill.pillPhot(data, repFact=repfact)
   phot(xcat, ycat, radius=fwhm * roundAperRad, l=0.0, a=0.0, exptime=EXPTIME,
-       zpt=26.0, skyRadius=4 * fwhm, width=30.,
+       #zpt=26.0, skyRadius=4 * fwhm, width=30.,
+       zpt=MAGZERO, skyRadius=4 * fwhm, width=30.,
        enableBGSelection=verbose, display=verbose, backupMode="smart",
        trimBGHighPix=3., zscale=False)
   phot.SNR(gain=gain, useBGstd=True)
@@ -447,7 +451,8 @@ linedmag = np.zeros(len(apertures))
 for i, ap in enumerate(apertures):
   phot(xt, yt, radius=fwhm * ap, l=(EXPTIME / 3600.) * rate / pxscale,
        a=angle, skyRadius=4 * fwhm, width=6 * fwhm,
-       zpt=26.0, exptime=EXPTIME, enableBGSelection=False, display=False,
+       #zpt=26.0, exptime=EXPTIME, enableBGSelection=False, display=False,
+       zpt=MAGZERO, exptime=EXPTIME, enableBGSelection=False, display=False,
        backupMode="smart", trimBGHighPix=3., zscale=False)
   phot.SNR(gain=gain, verbose=False, useBGstd=True)
   linedmag[i] = phot.dmagnitude
@@ -464,7 +469,8 @@ outfile.write("\nlineAperCorr,roundAperCorr={},{}".format(lineAperCorr,
 
 phot(xt, yt, radius=fwhm * lineAperRad, l=(EXPTIME / 3600.) * rate / pxscale,
      a=angle, skyRadius=4 * fwhm, width=6 * fwhm,
-     zpt=26.0, exptime=EXPTIME, enableBGSelection=True, display=True,
+     #zpt=26.0, exptime=EXPTIME, enableBGSelection=True, display=True,
+     zpt=MAGZERO, exptime=EXPTIME, enableBGSelection=True, display=True,
      backupMode="smart", trimBGHighPix=3., zscale=False)
 phot.SNR(gain=gain, verbose=True, useBGstd=True)
 
