@@ -480,7 +480,7 @@ useobj, scaterr, avmag, rmag = StarInspector(useobj, xccd, yccd, mjd,
 Calculate the zero-point correction.
 '''
 ddzero = np.mean(avmag) - avmag
-zeros_corrected = zeros_default + dzero + dzero
+zeros_corrected = zeros_default + dzero + ddzero
 magobj_corrected = magobj + ddzero
 magerrobj_corrected = (magerrobj ** 2 + scaterr[:, 0] ** 2) ** 0.5
 
