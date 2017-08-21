@@ -214,7 +214,7 @@ def sdss_check(x, y):
       slist.append(x[index])
       slist.append(y[index])
       sfilt.add_row(slist)
-    except TypeError:
+    except (TypeError, IndexError):
       print("Star at " + str(position)[39:-1] + " not found :-(.")
       slist = np.zeros(len(table_fields))
       slist[-2:] = x[index], y[index]
@@ -303,30 +303,47 @@ def print_tno_file(objname, odometer, julian, corrected,
 def print_stars_file(calstarfile, useobjects,
                      xcoord, ycoord, r_magnitude, r_magerr,
                      c_magnitude, c_magerr,
-                     sdss_magnitude, sdss_magerror):
+                     sdss_magnitude=None, sdss_magerror=None):
   '''
   Print the file with the calibration stars used.
   '''
   calfile = open(calstarfile, 'w')
-  print("#xcoo            ycoo             mag              dmag          " +
-        "   calibrated_mag   calibrated_dmag  sdss_mag         sdss_dmag")
-  calfile.write("#xcoo            ycoo             ccd_mag          " +
-                "ccd_dmag         calibrated_mag   calibrated_dmag  " +
-                "sdss_mag         sdss_dmag\n")
+  if (np.sum(sdss_magnitude) is not None) & \
+     (np.sum(sdss_magerror is not None)):
+    print("#xcoo            ycoo             mag              dmag        " +
+          "     calibrated_mag   calibrated_dmag  sdss_mag         sdss_dmag")
+    calfile.write("#xcoo            ycoo             ccd_mag          " +
+                  "ccd_dmag         calibrated_mag   calibrated_dmag  " +
+                  "sdss_mag         sdss_dmag\n")
+  else:
+    print("#xcoo            ycoo             mag              dmag        " +
+          "     calibrated_mag   calibrated_dmag")
+    calfile.write("#xcoo            ycoo             ccd_mag          " +
+                  "ccd_dmag         calibrated_mag   calibrated_dmag\n")
   for j in useobjects:
     r_u = np.mean(unp.uarray(r_magnitude[j], r_magerr[j])).s
     r_m = np.mean(unp.uarray(r_magnitude[j], r_magerr[j])).n
     c_u = np.mean(unp.uarray(c_magnitude[j], c_magerr[j])).s
     c_m = np.mean(unp.uarray(c_magnitude[j], c_magerr[j])).n
-    print("{0:16.11f} {1:16.11f} ".format(xcoord[j], ycoord[j]) +
-          "{0:16.13f} {1:16.13f} ".format(r_m, r_u) +
-          "{0:16.13f} {1:16.13f} ".format(c_m, c_u) +
-          "{0:16.13f} {1:16.13f}".format(sdss_magnitude[j], sdss_magerror[j]))
-    calfile.write("{0:16.11f} {1:16.11f} {2:16.13f} {3:16.13f} "
-                  .format(xcoord[j], ycoord[j], r_m, r_u) +
-                  "{0:16.13f} {1:16.13f} ".format(c_m, c_u) +
-                  "{0:16.13f} {1:16.13f}\n".format(sdss_magnitude[j],
-                                                   sdss_magerror[j]))
+    if (np.sum(sdss_magnitude) is not None) & \
+       (np.sum(sdss_magerror is not None)):
+      print("{0:16.11f} {1:16.11f} ".format(xcoord[j], ycoord[j]) +
+            "{0:16.13f} {1:16.13f} ".format(r_m, r_u) +
+            "{0:16.13f} {1:16.13f} ".format(c_m, c_u) +
+            "{0:16.13f} {1:16.13f}".format(sdss_magnitude[j],
+                                           sdss_magerror[j]))
+      calfile.write("{0:16.11f} {1:16.11f} {2:16.13f} {3:16.13f} "
+                    .format(xcoord[j], ycoord[j], r_m, r_u) +
+                    "{0:16.13f} {1:16.13f} ".format(c_m, c_u) +
+                    "{0:16.13f} {1:16.13f}\n".format(sdss_magnitude[j],
+                                                     sdss_magerror[j]))
+    else:
+      print("{0:16.11f} {1:16.11f} ".format(xcoord[j], ycoord[j]) +
+            "{0:16.13f} {1:16.13f} ".format(r_m, r_u) +
+            "{0:16.13f} {1:16.13f} ".format(c_m, c_u))
+      calfile.write("{0:16.11f} {1:16.11f} {2:16.13f} {3:16.13f} "
+                    .format(xcoord[j], ycoord[j], r_m, r_u) +
+                    "{0:16.13f} {1:16.13f}\n".format(c_m, c_u))
   calfile.close()
 
 
@@ -429,6 +446,7 @@ zeroserr = avmag.copy()
 xobj, yobj, magobj, magerrobj, rmagobj = np.zeros([5, ntimes])
 avmagobj, avmagerrobj = np.zeros([2, ntimes])
 zeros_default = 26.0
+usesdss = False
 
 for t, infile in enumerate(files):
   print(infile)
@@ -459,16 +477,20 @@ objects = np.arange(nobj)
 Check whether the stars are in the SDSS catalogue.
 If enough are, stop using those that are not.
 '''
-sdss = sdss_check(xccd, yccd)
-sdss_mag = np.array(sdss['psfMag_r'])
-sdss_magerr = np.array(sdss['psfMagErr_r'])
-insdss = sdss['nDetect'] > 0
-nsdss = len(np.where(insdss)[0])
-if nsdss >= 10:
-  usesdss = False
-  useobj[np.invert(insdss)] = False
-else:
-  usesdss = False
+if usesdss:
+  sdss = sdss_check(xccd, yccd)
+  sdss_mag = np.array(sdss['psfMag_r'])
+  sdss_magerr = np.array(sdss['psfMagErr_r'])
+  insdss = sdss['nDetect'] > 0
+  nsdss = len(np.where(insdss)[0])
+  if nsdss >= 10:
+    usesdss = False
+    useobj[np.invert(insdss)] = False
+  else:
+    usesdss = True
+print("Using SDSS stars: " + str(usesdss))
+print("Using {0:3.0f} of {1:3.0f} stars.".format(len(useobj[useobj]),
+                                                 len(useobj)))
 
 '''
 Inspect the stars and get rid of any variable ones.
@@ -483,7 +505,8 @@ ddzero = np.mean(avmag) - avmag
 zeros_corrected = zeros_default + dzero + ddzero
 magobj_corrected = magobj + ddzero
 magerrobj_corrected = (magerrobj ** 2 + scaterr[:, 0] ** 2) ** 0.5
-
+print("Zero-point calibration from relative photometry:")
+print(ddzero)
 
 '''
 Now read in measured object and correct it.
@@ -515,7 +538,11 @@ magerr_done = (magerr ** 2 + scaterr[:, 0] ** 2) ** 0.5 + systematic_err
 print_tno_file('calibratedmags', files, mjd, magobj_done,
                magerrobj_done, systematic_err, zeros_corrected)
 
-print_stars_file('calibrationstars.txt', objects[useobj],
-                 xccd, yccd, mag, magerr, mag_done, magerr_done,
-                 sdss_mag, sdss_magerr)
+if usesdss:
+  print_stars_file('calibrationstars.txt', objects[useobj],
+                   xccd, yccd, mag, magerr, mag_done, magerr_done,
+                   sdss_mag, sdss_magerr)
+else:
+  print_stars_file('calibrationstars.txt', objects[useobj],
+                   xccd, yccd, mag, magerr, mag_done, magerr_done)
 #
