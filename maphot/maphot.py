@@ -236,7 +236,10 @@ with pyf.open(inputFile) as han:
   data = han[0].data
   header = han[0].header
   EXPTIME = header['EXPTIME']
-  MAGZERO = header['MAGZERO']
+  try:
+    MAGZERO = header['MAGZERO']
+  except:
+    MAGZERO = 26.0
   try:
     MJD = header['MJD']
   except:
@@ -487,12 +490,15 @@ outfile.write("\nphot.snr={}".format(phot.snr))
 outfile.write("\nphot.bg={}".format(phot.bg))
 
 print("\nFINAL RESULT!")
-print("\n#   x       y   magnitude  dmagnitude")
-print(xt, yt, phot.magnitude - lineAperCorr, phot.dmagnitude, "\n")
+print("\n#{0:12} {1:13} {2:13} {3:13} {4:13}".format(
+      '   x ', '    y ', ' magnitude ', '  dmagnitude ', ' magzero '))
+print("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
+      xt, yt, phot.magnitude - lineAperCorr, phot.dmagnitude, MAGZERO))
 outfile.write("\nFINAL RESULT!")
-outfile.write("\n#   x       y   magnitude  dmagnitude")
-outfile.write("\n{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f}\n".format(
-              xt, yt, phot.magnitude - lineAperCorr, phot.dmagnitude))
+outfile.write("\n#{0:12} {1:13} {2:13} {3:13} {4:13}\n".format(
+              '   x ', '    y ', ' magnitude ', '  dmagnitude ', ' magzero '))
+outfile.write("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
+              xt, yt, phot.magnitude - lineAperCorr, phot.dmagnitude, MAGZERO))
 
 # You could stop here.
 # However, to confirm that things are working well,
