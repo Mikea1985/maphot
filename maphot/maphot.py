@@ -20,18 +20,89 @@ in order to predict the location in that image.
 """
 
 from __future__ import print_function, division
+import os
 import getopt
 import sys
 from six.moves import input, zip
 import numpy as np
+import pylab as pyl
 import astropy.io.fits as pyf
 from astropy.visualization import interval
-import pylab as pyl
+from astropy.io.votable import parse_single_table
+from astropy.table import Column
+#from astropy.io import fits
+import mp_ephem
 from trippy import psf, pill, psfStarChooser, scamp, MCMCfit
 from stsci import numdisplay
+import requests
 import best
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
+
+
+def queryPanSTARRS(ra_deg, dec_deg, rad_deg=0.1, mindet=1, maxsources=10000,
+                   server=('https://archive.stsci.edu/panstarrs/search.php'),
+                   catalog_filename='panstarrs.xml'):
+  '''
+  This function is inspired by Michael Mommert's wordpress post about querying
+  PanSTARRS1 from Python:
+  https://michaelmommert.wordpress.com/2017/02/13/
+  accessing-the-gaia-and-pan-starrs-catalogs-using-python/
+  Query Pan-STARRS DR1 @ MAST
+  parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field radius in degrees
+              mindet: minimum number of detection (optional)
+              maxsources: maximum number of sources
+              server: servername
+              catalog_filename: the filename to save the catalog query to.
+  returns: astropy.table object
+  '''
+  r = requests.get(server, params={'RA': ra_deg, 'DEC': dec_deg,
+                                   'SR': rad_deg, 'max_records': maxsources,
+                                   'outputformat': 'VOTable',
+                                   'ndetections': ('>%d' % mindet)})
+  # write query data into local file
+  outf = open(catalog_filename, 'w')
+  outf.write(r.text)
+  outf.close()
+  return
+
+
+def readPanSTARRS(catalog_filename='panstarrs.xml', rMin=0, gMin=0,
+                  PSF_Kron=0.5):
+  '''
+  Read a PanSTARRS catalog from an xml file.
+  Only include objects that have both g and r-band magnitudes.
+  '''
+  # Read an xml file and parse it into an astropy.table object.
+  PS1CatDataFull = parse_single_table(catalog_filename)
+  PS1All = PS1CatDataFull.to_table(use_names_over_ids=True)
+  PS1Cat = PS1All[(PS1All['rMeanPSFMag'] > rMin)
+                  & (PS1All['gMeanPSFMag'] > gMin)
+                  & (PS1All['rMeanPSFMag'] - PS1All['rMeanKronMag'] < PSF_Kron)
+                  & (PS1All['gMeanPSFMag']
+                     - PS1All['gMeanKronMag'] < PSF_Kron)]
+  return PS1Cat
+
+
+def PS1_vs_SEx(PS1Cat, SExCat, maxDist=1):
+  '''
+  Match sources in the PanSTARRS and Source Extractor catalogs.
+  Return only the overlapping catalog, with all columns from both catalogs.
+  With this, we probably don't need to use catalogTrim. Maybe? Let's see.
+  '''
+  SExArgs = []
+  PS1Args = []
+  for ii, RADeci in enumerate(PS1Cat['raMean', 'decMean']):
+    distance = ((SExCat['X_WORLD'] - RADeci[0]) ** 2 +
+                (SExCat['Y_WORLD'] - RADeci[1]) ** 2) ** 0.5
+    dminSExArg = np.argsort(distance)[0]
+    if distance[dminSExArg] < maxDist / 3600.:
+      SExArgs.append(dminSExArg)
+      PS1Args.append(ii)
+  PS1SExCatalog = PS1Cat[PS1Args]
+  PS1SExCatalog.add_columns([Column(SExCat[key][SExArgs], key)
+                             for key in SExCat.keys()])
+  return PS1SExCatalog
 
 
 def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut):
@@ -73,6 +144,91 @@ def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut):
   return outcat
 
 
+def getObservations(mpc_lines):
+  '''Parces MPC lines and generates an mp_ephem observation.'''
+  observationList = []
+  for _, mpc_line in enumerate(mpc_lines):
+    date = mpc_line[15:31]
+    ra = mpc_line[32:44]
+    dec = mpc_line[44:57]
+    obsCode = mpc_line[-4:-1]
+    observationList.append(mp_ephem.ephem.Observation(ra=ra, dec=dec,
+                                                      date=date,
+                                                      observatory_code=obsCode)
+                           )
+  return observationList
+
+
+def coordRateAngle(orbit, MJDate, WCS, obs_code=568):
+  '''Given an orbit and a date (MJDate),
+  calculates the rate and angle of motion
+  as seen from a given observatory (default is 568 - Mauna Kea, Hawai'i).'''
+  orbit.predict(MJDate + 2400000.5, obs_code=obs_code)
+  ra0, dec0 = orbit.coordinate.ra.degree, orbit.coordinate.dec.degree
+  orbit.predict(MJDate + 2400000.5 + 1. / 24.0, obs_code=obs_code)
+  ra1, dec1 = orbit.coordinate.ra.degree, orbit.coordinate.dec.degree
+  #rate_deg = ((np.cos(dec0 * np.pi / 180) * (ra1 - ra0)) ** 2
+  #            + (dec1 - dec0) ** 2) ** 0.5  # degrees per hour
+  coords = WCS.wcs_world2pix(np.array([[ra0, dec0], [ra1, dec1]]), 1)
+  rate_pix = ((coords[1, 0] - coords[0, 0]) ** 2
+              + (coords[1, 1] - coords[0, 1]) ** 2) ** 0.5  # pix per hour
+  angle_pix = (np.arctan2(coords[1, 1] - coords[0, 1],
+                          coords[1, 0] - coords[0, 0]) * 180. / np.pi) % 180
+  return coords[0, :], rate_pix, angle_pix
+
+
+def writeSExParFiles(imageFileName, params):
+  '''
+  This writes a Source Extractor parameter file.
+  '''
+  sexFile = imageFileName.replace('.fits', '.sex')
+  os.system('rm {}'.format(sexFile))
+  os.system('rm def.param')
+  os.system('rm default.conv')
+  scamp.makeParFiles.writeSex(sexFile,
+                              minArea=params[0], threshold=params[1],
+                              zpt=params[2], aperture=params[3],
+                              kron_factor=params[4], min_radius=params[5],
+                              catalogType='FITS_LDAC', saturate=110000)
+  scamp.makeParFiles.writeConv()
+  scamp.makeParFiles.writeParam('def.param', numAps=1)
+
+
+def runSExtractor(imageFileName, SExParams):
+  '''
+  Run Source Extractor. Provide a useful error if it fails.
+  '''
+  SExtractorFile = imageFileName.replace('.fits', '.sex')
+  catalogFile = imageFileName.replace('.fits', '.cat')
+  writeSExParFiles(imageFileName, SExParams)
+  try:
+    scamp.runSex(SExtractorFile, imageFileName,
+                 options={'CATALOG_NAME': catalogFile})
+    fullcatalog = scamp.getCatalog(catalogFile, paramFile='def.param')
+  except IOError as error:
+    raise IOError('\n{}\nYou have almost certainly forgotten '.format(error) +
+                  'to activate Ureka or AstroConda!')
+  return fullcatalog
+
+
+def getSExCatalog(imageFileName, SExParams, verb=True):
+  '''Checks whether a catalog file already exists.
+  If it does, it is read in. If not, it runs Source Extractor to create it.
+  '''
+  catalogFile = imageFileName.replace('.fits', '.cat')
+  try:
+    fullcatalog = scamp.getCatalog(catalogFile, paramFile='def.param')
+  except IOError:
+    fullcatalog = runSExtractor(imageFileName, SExParams)
+  except UnboundLocalError:
+    print("\nData error occurred!\n")
+    raise
+  ncat = len(fullcatalog['XWIN_IMAGE'])
+  print("\n" + str(ncat) + " catalog stars\n" if verb else "")
+  return fullcatalog
+
+
+'''
 def getCatalogue(file_start):
   """getCatalog checks whether a catalog file already exists.
   If it does, it is read in. If not, it runs SExtractor to create it.
@@ -113,7 +269,7 @@ def getCatalogue(file_start):
   print("\n", ncat, " catalog stars\n")
   outfile.write("\n{} catalog stars\n".format(ncat))
   return fullcatalog
-
+'''
 
 def runMCMCCentroid(centPSF, centData, centxt, centyt, centm,
                     centbg, centdtransx, centdtransy):
@@ -260,7 +416,7 @@ outfile.write("\nWorking on {}.\n".format(inputFile))
 print("\nMJD = ", MJD, "\n")
 outfile.write("\nMJD = {}\n".format(MJD))
 
-fullcat = getCatalogue(inputName)
+fullcat = getSExCatalog(inputName, SEx_params)
 
 if overrideSEx:
   xt, yt = x0, y0
@@ -543,10 +699,10 @@ if centroid or remove:
   #pyl.show()
   hdu = pyf.PrimaryHDU(modelImage, header=han[0].header)
   list = pyf.HDUList([hdu])
-  list.writeto(inputName + '_modelImage.fits', clobber=True)
+  list.writeto(inputName + '_modelImage.fits', overwrite=True)
   hdu = pyf.PrimaryHDU(removed, header=han[0].header)
   list = pyf.HDUList([hdu])
-  list.writeto(inputName + '_removed.fits', clobber=True)
+  list.writeto(inputName + '_removed.fits', overwrite=True)
 else:
   (z1, z2) = numdisplay.zscale.zscale(Data)
   normer = interval.ManualInterval(z1, z2)
@@ -557,9 +713,9 @@ else:
 
 hdu = pyf.PrimaryHDU(goodPSF.lookupTable, header=han[0].header)
 list = pyf.HDUList([hdu])
-list.writeto(inputName + '_lookupTable.fits', clobber=True)
+list.writeto(inputName + '_lookupTable.fits', overwrite=True)
 hdu = pyf.PrimaryHDU(Data, header=han[0].header)
 list = pyf.HDUList([hdu])
-list.writeto(inputName + '_Data.fits', clobber=True)
+list.writeto(inputName + '_Data.fits', overwrite=True)
 
 outfile.close()
