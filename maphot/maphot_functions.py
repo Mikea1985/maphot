@@ -261,7 +261,7 @@ def getArguments(sysargv, useage):
   Arepfact = 10
   Apxscale = 1.0
   AroundAperRad = 1.4
-  Asexparfile = 'sex.pars'
+  Asexparfile = None
   Aextno = 0
   try:
     options, dummy = getopt.getopt(sysargv[1:], "f:c:v:.:o:r:a:h:s:e:",
@@ -359,7 +359,7 @@ def predicted2catalog(someCatalog, someCoords):
     if dsum:
       print('WARNING! {} sets of coordinates '.format(dsum) +
             'were shifted by more than {} pixels'.format(di))
-  return np.array(catCoords).T
+  return np.array(catCoords).T, minDist
 
 
 def saveTNOMag(image_fn, mpc_fn, headerMJD, obsMJD, SExTNOCoord, x_tno, y_tno,

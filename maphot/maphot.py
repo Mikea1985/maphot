@@ -36,6 +36,8 @@ import best
 from maphot_functions import (getArguments, getObservations, coordRateAngle,
                               getSExCatalog, predicted2catalog,
                               runMCMCCentroid, saveTNOmag, saveStarMag,
+                              getDataHeader, addPhotToCatalog, PS1SExCat,
+                              PS1_to_CFHT,
                               __version__)
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
@@ -56,8 +58,12 @@ if verbose:
   if centroid or remove:
     print("Will run MCMC centroiding")
 
+# Read in the image and get the data, header and keywords needed.
+(data, header, EXPTIME, MAGZERO, MJD, GAIN, NAXIS1, NAXIS2, WCS
+ ) = getDataHeader(inputFile, extno=extno)
+
 # Set up an output file that has all sorts of information.
-# Preferably, whenever something is printed to screen, save it here too. 
+# Preferably, whenever something is printed to screen, save it here too.
 inputName = inputFile[:-5]
 outfile = open(inputName + '.trippy', 'w')
 print("############################")
@@ -66,10 +72,6 @@ print("############################")
 outfile.write("\nWorking on {}.\n".format(inputFile))
 print("\nMJD = ", MJD)
 outfile.write("\nMJD = {}\n".format(MJD))
-
-# Read in the image and get the data, header and keywords needed.
-(data, header, EXPTIME, MAGZERO, MJD, GAIN,
-  NAXIS1, NAXIS2, WCS) = getDataHeader(inputfile, extno)
 
 #Get the object coordinates and rates of motion
 with open(coordsfile) as han:
@@ -93,11 +95,10 @@ else:
 fullSExCat = getSExCatalog(inputName, SEx_params)
 
 #If using the Source Extractor centroid is undesirable, set overrideSEx=True
-if overrideSEx:
-  xt, yt = x0, y0
-else:
-  xt, yt = predicted2catalog(fullSExCat, TNOcoord)
-
+#Otherwise, the source nearest the predicted TNO location is used.
+xt, yt, centroidShift = predicted2catalog(fullSExCat, TNOcoord)
+if (centroidShift > 15) | overrideSEx:
+  xt, yt = x0, y0  # Use predicted location.
 print("xt, yt = ", xt, yt)
 outfile.write("xt, yt = {}, {}\n".format(xt, yt))
 
@@ -106,9 +107,11 @@ try:
   bestCat = best.unpickleCatalogue('best.cat')
   print('Success!')
 except IOError:
-  print('Uh oh! Unpickling  unsuccesful. File missing?')
-  best.best(['a' + str(i) for i in range(100, 124)], repfact)
-  bestCat = best.unpickleCatalogue('best.cat')
+  print('Uh oh! Unpickling unsuccesful. Does best.cat exist?')
+  print('If not, run best.best([fitsList]).')
+  #best.best([glob.glob('*.fits')], repfact)
+  #bestCat = best.unpickleCatalogue('best.cat')
+  raise IOError('best.cat missing. Run best.best')
 catalog_psf = best.findSharedCatalogue([fullSExCat, bestCat], 0)
 catalog_phot = catalog_psf
 
