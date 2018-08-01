@@ -26,12 +26,12 @@ import getopt
 import sys
 import numpy as np
 import mp_ephem
+import requests
 import astropy.io.fits as pyf
 from astropy.io.votable import parse_single_table
 from astropy.table import Column
 from astropy import wcs
-from trippy import scamp, MCMCfit
-import requests
+from trippy import scamp, MCMCfit, psf, psfStarChooser
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
 __version__ = 0.3
@@ -514,10 +514,10 @@ def getDataHeader(inputFile, extno=None):
     EXPTIME = header['EXPTIME']
     try:
       MAGZERO = header['MAGZERO']  # Subaru Hyper-Suprime
-    except:
+    except KeyError:
       try:
         MAGZERO = header['PHOT_C']   # CFHT MegaCam
-      except:
+      except KeyError:
         MAGZERO = 26.0
     try:
       MJD = header['MJD']  # Subaru
@@ -534,6 +534,108 @@ def getDataHeader(inputFile, extno=None):
     NAXIS2 = header['NAXIS2'] if header['NAXIS2'] > 128 else header['ZNAXIS2']
   WCS = wcs.WCS(header)
   return data, header, EXPTIME, MAGZERO, MJD, GAIN, NAXIS1, NAXIS2, WCS
+
+
+def inspectStars(data, catalogue, repfactor, **kwargs):
+  """Run psfStarChooser, inspect stars, generate PSF and lookup table.
+  """
+  SExCatalogue = kwargs.pop('SExCatalogue', False)
+  noVisualSelection = kwargs.pop('noVisualSelection', False)
+  verbose = kwargs.pop('verbose', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
+  try:
+    starChooser = psfStarChooser.starChooser(data, catalogue['XWIN_IMAGE'],
+                                             catalogue['YWIN_IMAGE'],
+                                             catalogue['FLUX_AUTO'],
+                                             catalogue['FLUXERR_AUTO'])
+    (goodFits, goodMeds, goodSTDs
+     ) = starChooser(30, 100,  # (box size, min SNR)
+                     initAlpha=3., initBeta=3.,
+                     repFact=repfactor,
+                     includeCheesySaturationCut=False,
+                     noVisualSelection=noVisualSelection,
+                     verbose=False)
+    print(("\ngoodFits = ", goodFits, "\n") if verbose else "")
+    print(("\ngoodMeds = ", goodMeds, "\n") if verbose else "")
+    print(("\ngoodSTDs = ", goodSTDs, "\n") if verbose else "")
+    goodPSF = psf.modelPSF(np.arange(61), np.arange(61), alpha=goodMeds[2],
+                           beta=goodMeds[3], repFact=repfactor)
+    fwhm = goodPSF.FWHM()  # this is the pure moffat FWHM
+    print("fwhm = " + str(fwhm) if verbose else "")
+    goodPSF.genLookupTable(data, goodFits[:, 4], goodFits[:, 5], verbose=False)
+    goodPSF.genPSF()
+    fwhm = goodPSF.FWHM()  # this is the FWHM with lookuptable included
+    print("fwhm = " + str(fwhm) if verbose else "")
+  except UnboundLocalError:
+    print("Data error occurred!")
+    raise
+  if SExCatalogue:
+    bestCatalogue = extractGoodStarCatalogue(catalogue,
+                                             goodFits[:, 4], goodFits[:, 5])
+    return bestCatalogue
+  return goodFits, goodMeds, goodSTDs, goodPSF, fwhm
+
+
+def extractGoodStarCatalogue(startCatalogue, xcat, ycat, **kwargs):
+  """extractBestStarCatalogue crops a Catalogue,
+  leaving only the stars that match a given x & y list.
+  """
+  verbose = kwargs.pop('verbose', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
+  trimCatalogue = {'XWIN_IMAGE': xcat,
+                   'YWIN_IMAGE': ycat}
+  print(trimCatalogue if verbose else "")
+  goodCatalogue = findSharedCatalogue([startCatalogue, trimCatalogue], 0)
+  print((len(goodCatalogue), len(goodCatalogue[0])) if verbose else "")
+  return goodCatalogue
+
+
+def findSharedCatalogue(catalogueArray, useIndex, **kwargs):
+  """Compare catalogues and create a master catalogue of only
+  stars that are in all images
+  """
+  verbose = kwargs.pop('verbose', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
+  ntimes = len(catalogueArray)
+  keys = catalogueArray[0].keys()
+  nkeys = len(keys)
+  xkey = np.where(np.array(keys) == 'XWIN_IMAGE')[0][0]
+  ykey = np.where(np.array(keys) == 'YWIN_IMAGE')[0][0]
+  xstar = [list(catalogueArray[ii]['XWIN_IMAGE']) for ii in range(ntimes)]
+  ystar = [list(catalogueArray[ii]['YWIN_IMAGE']) for ii in range(ntimes)]
+  nobjmax = len(xstar[useIndex])
+  master = np.zeros([nobjmax, nkeys + ntimes])
+  master[:, 0:nkeys] = np.array([list(catalogueArray[useIndex][key])
+                                 for key in keys]).T
+  for tt in np.arange(0, ntimes):
+    for ss in np.arange(len(xstar[tt])):
+      distsquare = ((master[:, xkey] - xstar[tt][ss]) ** 2 +
+                    (master[:, ykey] - ystar[tt][ss]) ** 2)
+      idx = distsquare.argmin()
+      if distsquare[idx] < 25:  # if match previous star, add to its array
+        master[idx, nkeys + tt] = 1
+      else:  # else do nothing
+        pass
+  trimlist = []
+  for ss in np.arange(nobjmax):
+    #if len(np.where(master[ss][nkeys:] == 0)[0]) == 0:
+    #  trimlist.append(ss)
+    if not np.where(master[ss][nkeys:] == 0)[0]:
+      trimlist.append(ss)
+  sharedCatalogue = {}
+  for kk, key in enumerate(keys):
+    sharedCatalogue[key] = master[trimlist][:, kk]
+  print((len(sharedCatalogue), len(sharedCatalogue[0])) if verbose else "")
+  """This should return a catalogue dictionary formatted in the same
+  way as the original catalogue, allowing us to do anything with it that
+  we could do with any other catalogue.
+  """
+  return sharedCatalogue
+
+
 
 
 # End of file.

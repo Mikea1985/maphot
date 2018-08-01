@@ -30,14 +30,14 @@ import mp_ephem
 import astropy.io.fits as pyf
 from astropy.visualization import interval
 #from astropy.io import fits
-from trippy import psf, pill, psfStarChooser, MCMCfit
-from stsci import numdisplay
+from trippy import psf, pill, MCMCfit
+from stsci import numdisplay  # pylint: disable=import-error
 import best
 from maphot_functions import (getArguments, getObservations, coordRateAngle,
                               getSExCatalog, predicted2catalog,
                               runMCMCCentroid, saveTNOmag, saveStarMag,
                               getDataHeader, addPhotToCatalog, PS1SExCat,
-                              PS1_to_CFHT,
+                              PS1_to_CFHT, inspectStars,
                               __version__)
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
@@ -128,31 +128,12 @@ except IOError:
   print("Could not restore PSF (Normal unless previously saved)")
   print("Making new one.")
   outfile.write("\nDid not restore PSF from file\n")
-  starChooser = psfStarChooser.starChooser(data, catalog_psf['XWIN_IMAGE'],
-                                           catalog_psf['YWIN_IMAGE'],
-                                           catalog_psf['FLUX_AUTO'],
-                                           catalog_psf['FLUXERR_AUTO'])
-  (goodFits, goodMeds, goodSTDs
-   ) = starChooser(30, 100,  # (box size, min SNR)
-                   initAlpha=3., initBeta=3.,
-                   repFact=repfact,
-                   includeCheesySaturationCut=False,
-                   verbose=False)
-  print("\ngoodFits = ", goodFits)
-  print("\ngoodMeds = ", goodMeds)
-  print("\ngoodSTDs = ", goodSTDs)
+  (goodFits, goodMeds, goodSTDs, goodPSF, fwhm
+   ) = inspectStars(data, catalog_psf, repfact, verbose=True)
   outfile.write("\ngoodFits={}".format(goodFits))
   outfile.write("\ngoodMeds={}".format(goodMeds))
   outfile.write("\ngoodSTDs={}".format(goodSTDs))
-  goodPSF = psf.modelPSF(np.arange(61), np.arange(61), alpha=goodMeds[2],
-                         beta=goodMeds[3], repFact=repfact)
-  fwhm = goodPSF.FWHM()  # this is the pure moffat FWHM
-  print("fwhm = ", fwhm)
   outfile.write("\n fwhm = {}\n".format(fwhm))
-  goodPSF.genLookupTable(data, goodFits[:, 4], goodFits[:, 5], verbose=False)
-  goodPSF.genPSF()
-  fwhm = goodPSF.FWHM()  # this is the FWHM with lookuptable included
-  print("fwhm = ", fwhm)
   outfile.write("\n fwhm = {}\n".format(fwhm))
 except UnboundLocalError:
   print("Data error occurred!")
