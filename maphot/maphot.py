@@ -36,7 +36,7 @@ import best
 from maphot_functions import (getArguments, getObservations, coordRateAngle,
                               getSExCatalog, predicted2catalog,
                               runMCMCCentroid, saveTNOmag, saveStarMag,
-                              getDataHeader, addPhotToCatalog, PS1SExCat,
+                              getDataHeader, addPhotToCatalog, PS1_vs_SEx,
                               PS1_to_CFHT, inspectStars,
                               __version__)
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
@@ -304,9 +304,12 @@ outfile.write("\n#{0:12} {1:13} {2:13} {3:13} {4:13}\n".format(
 outfile.write("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
               xt, yt, phot.magnitude - lineAperCorr, phot.dmagnitude, MAGZERO))
 
+
+
 # Match phot stars to PS1 catalog
+PS1SExCat = PS1_vs_SEx(PS1Catalog, catalog_phot, maxDist=2.5)
 PS1PhotCat = addPhotToCatalog(goodFits[:, 4], goodFits[:, 5],
-                              PS1SExCat, photCat)
+                              PS1SExCat, catalog_phot)
 # Convert star catalog's PS1 magnitudes to CFHT magnitudes
 finalCat = PS1_to_CFHT(PS1PhotCat)
 # Calculate magnitude calibration factor
