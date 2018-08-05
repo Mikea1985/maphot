@@ -14,7 +14,8 @@ import numpy as np
 import astropy.io.fits as pyf
 from maphot_functions import (getSExCatalog, inspectStars,
                               queryPanSTARRS, readPanSTARRS, PS1_vs_SEx,
-                              getDataHeader, findSharedPS1Catalogue)
+                              getDataHeader, findSharedPS1Catalogue,
+                              saveStarMag)
 from __version__ import __version__
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
@@ -192,8 +193,12 @@ def best(imageArray, repfactor, **kwargs):
         ' PS1 sources are visible in all images.')
   bestData, _, _, _, _, _, _, _, _ = getDataHeader(imageArray[bestID] +
                                                    '.fits', extno=extno)
+  saveStarMag('PS1SharedCat.txt', PS1SharedCat,
+              'now', __version__, '2000', extno=7)
   bestSharedPS1SExCat = PS1_vs_SEx(PS1SharedCat, bestSExCat, maxDist=2.5,
                                    appendSEx=True)
+  saveStarMag('bestSharedPS1SExCat.txt', bestSharedPS1SExCat,
+              'now', __version__, '2000', extno=7)
   bestCatalogue = inspectStars(bestData, bestSharedPS1SExCat,
                                repfactor, SExCatalogue=True,
                                noVisualSelection=False)
