@@ -182,6 +182,7 @@ def writeSExParFiles(imageFileName, minArea, threshold, zpt, aperture,
   This writes a Source Extractor parameter file.
   '''
   if extno is None:
+    print('Warning: Treating this as a single extension file.')
     sexFile = imageFileName.replace('.fits', '.sex')
   else:
     sexFile = imageFileName.replace('.fits', '{0:02.0f}.sex'.format(extno))
@@ -205,15 +206,18 @@ def runSExtractor(imageFileName, SExParams, extno=None):
   '''  Run Source Extractor. Provide a useful error if it fails.
   '''
   if extno is None:
+    print('Warning: Treating this as a single extension file.')
     SExtractorFile = imageFileName.replace('.fits', '.sex')
     catalogFile = imageFileName.replace('.fits', '.cat')
+    imageFNE = imageFileName
   else:
     SExtractorFile = imageFileName.replace('.fits',
                                            '{0:02.0f}.sex'.format(extno))
     catalogFile = imageFileName.replace('.fits', '{0:02.0f}.cat'.format(extno))
+    imageFNE = imageFileName + '[{}]'.format(extno)
   writeSExParFiles(imageFileName, *SExParams, extno=extno)
   try:
-    scamp.runSex(SExtractorFile, imageFileName,
+    scamp.runSex(SExtractorFile, imageFNE,
                  options={'CATALOG_NAME': catalogFile})
     fullcatalog = scamp.getCatalog(catalogFile, paramFile='def.param')
   except IOError as error:
@@ -227,6 +231,7 @@ def getSExCatalog(imageFileName, SExParams, extno=None, verb=True):
   If it does, it is read in. If not, it runs Source Extractor to create it.
   '''
   if extno is None:
+    print('Warning: Treating this as a single extension file.')
     catalogFile = imageFileName.replace('.fits', '{0:02.0f}.cat'.format(extno))
   else:
     catalogFile = imageFileName.replace('.fits', '{0:02.0f}.cat'.format(extno))
@@ -392,6 +397,7 @@ def saveTNOMag(image_fn, mpc_fn, headerMJD, obsMJD, SExTNOCoord, x_tno, y_tno,
     mag_strings += '{}\t{}\t'.format(TNOphot.magnitude[ai],
                                      TNOphot.dmagnitude[ai])
   if extno is None:
+    print('Warning: Treating this as a single extension file.')
     TNOFileName = image_fn.replace('.fits', '_TNOmag.txt')
   else:
     TNOFileName = image_fn.replace('.fits',
@@ -425,6 +431,7 @@ def saveTNOMag(image_fn, mpc_fn, headerMJD, obsMJD, SExTNOCoord, x_tno, y_tno,
 def saveStarMag(image_fn, finalCat, timeNow, version, headerMJD, extno=None):
   '''Save the star magnitudes and other information.'''
   if extno is None:
+    print('Warning: Treating this as a single extension file.')
     starFileName = image_fn.replace('.fits', '_starmag.txt')
   else:
     starFileName = image_fn.replace('.fits',
@@ -531,6 +538,7 @@ def getDataHeader(inputFile, extno=None):
   Returns the image data, the header, and a few useful keyword values.'''
   with pyf.open(inputFile) as han:
     if extno is None:
+      print('Warning: Treating this as a single extension file.')
       data = han.data
       header = han.header
     else:
@@ -614,12 +622,12 @@ def extractGoodStarCatalogue(startCatalogue, xcat, ycat, **kwargs):
   trimCatalogue = {'XWIN_IMAGE': xcat,
                    'YWIN_IMAGE': ycat}
   print(trimCatalogue if verbose else "")
-  goodCatalogue = findSharedSExCatalogue([startCatalogue, trimCatalogue], 0)
+  goodCatalogue = findSharedSExCatalogue([startCatalogue, trimCatalogue])
   print((len(goodCatalogue), len(goodCatalogue[0])) if verbose else "")
   return goodCatalogue
 
 
-def findSharedSExCatalogue(catalogueArray, useIndex, **kwargs):
+def findSharedSExCatalogue_old(catalogueArray, useIndex, **kwargs):
   """Compare catalogues and create a master catalogue of only
   stars that are in all images
   """
@@ -629,10 +637,10 @@ def findSharedSExCatalogue(catalogueArray, useIndex, **kwargs):
   ntimes = len(catalogueArray)
   keys = catalogueArray[0].keys()
   nkeys = len(keys)
-  xkey = np.where(np.array(keys) == 'X_WORLD')[0][0]
-  ykey = np.where(np.array(keys) == 'Y_WORLD')[0][0]
-  xstar = [list(catalogueArray[ii]['X_WORLD']) for ii in range(ntimes)]
-  ystar = [list(catalogueArray[ii]['Y_WORLD']) for ii in range(ntimes)]
+  xkey = np.where(np.array(keys) == 'XWIN_IMAGE')[0][0]
+  ykey = np.where(np.array(keys) == 'YWIN_IMAGE')[0][0]
+  xstar = [list(catalogueArray[ii]['XWIN_IMAGE']) for ii in range(ntimes)]
+  ystar = [list(catalogueArray[ii]['YWIN_IMAGE']) for ii in range(ntimes)]
   nobjmax = len(xstar[useIndex])
   master = np.zeros([nobjmax, nkeys + ntimes])
   master[:, 0:nkeys] = np.array([list(catalogueArray[useIndex][key])
@@ -655,6 +663,30 @@ def findSharedSExCatalogue(catalogueArray, useIndex, **kwargs):
   sharedCatalogue = {}
   for kk, key in enumerate(keys):
     sharedCatalogue[key] = master[trimlist][:, kk]
+  print((len(sharedCatalogue), len(sharedCatalogue[0])) if verbose else "")
+  """This should return a catalogue dictionary formatted in the same
+  way as the original catalogue, allowing us to do anything with it that
+  we could do with any other catalogue.
+  """
+  return sharedCatalogue
+
+
+def findSharedSExCatalogue(catalogueArray, **kwargs):
+  """Compare catalogues and create a master catalogue of only
+  stars that are in all images
+  """
+  verbose = kwargs.pop('verbose', False)
+  if kwargs:
+    raise TypeError('Unexpected **kwargs: %r' % kwargs)
+  cat0 = catalogueArray[0]
+  n0 = len(cat0)
+  maskUse = np.ones(n0, dtype=bool)
+  for catalogue in catalogueArray[1:]:
+    maskNew = np.array([(cat0['XWIN_IMAGE'][i] in catalogue['XWIN_IMAGE']) &
+                        (cat0['YWIN_IMAGE'][i] in catalogue['YWIN_IMAGE'])
+                        for i in np.arange(n0)])
+    maskUse = maskUse & maskNew
+  sharedCatalogue = cat0[maskUse]
   print((len(sharedCatalogue), len(sharedCatalogue[0])) if verbose else "")
   """This should return a catalogue dictionary formatted in the same
   way as the original catalogue, allowing us to do anything with it that

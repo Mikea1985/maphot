@@ -9,6 +9,7 @@ Module for:
 from __future__ import print_function, division
 import getopt
 import sys
+from datetime import datetime
 import pickle
 import numpy as np
 import astropy.io.fits as pyf
@@ -35,6 +36,7 @@ def findBestImage(imageArray,
   for ii, frameID in enumerate(imageArray):
     hans = pyf.open(frameID + '.fits')
     if extno is None:
+      print('Warning: Treating this as a single extension file.')
       headers = hans.header
     else:
       headers = hans[extno].header
@@ -191,21 +193,27 @@ def best(imageArray, repfactor, **kwargs):
   PS1SharedCat = PanSTARRSStuff(catalogueArray, bestID)
   print('{}'.format(len(PS1SharedCat)) +
         ' PS1 sources are visible in all images.')
-  bestData, _, _, _, _, _, _, _, _ = getDataHeader(imageArray[bestID] +
-                                                   '.fits', extno=extno)
-  saveStarMag('PS1SharedCat.txt', PS1SharedCat,
-              'now', __version__, '2000', extno=7)
+  bestData, _, _, _, obsMJD, _, _, _, _ = getDataHeader(imageArray[bestID] +
+                                                        '.fits', extno=extno)
+  timeNow = datetime.now().strftime('%Y-%m-%d/%H:%M:%S')
+  if verbose:
+    saveStarMag('PS1SharedCat.txt', PS1SharedCat,
+                timeNow, __version__, 'All images', extno=extno)
   bestSharedPS1SExCat = PS1_vs_SEx(PS1SharedCat, bestSExCat, maxDist=2.5,
                                    appendSEx=True)
-  saveStarMag('bestSharedPS1SExCat.txt', bestSharedPS1SExCat,
-              'now', __version__, '2000', extno=7)
-  bestCatalogue = inspectStars(bestData, bestSharedPS1SExCat,
-                               repfactor, SExCatalogue=True,
-                               noVisualSelection=False)
-  print('{}'.format(len(bestCatalogue)) +
+  if verbose:
+    saveStarMag('bestSharedPS1SExCat.txt', bestSharedPS1SExCat,
+                timeNow, __version__, obsMJD, extno=extno)
+  inspectedSExCat = inspectStars(bestData, bestSharedPS1SExCat[:20],
+                                 repfactor, SExCatalogue=True,
+                                 noVisualSelection=False)
+  inspectedPS1Cat = findSharedPS1Catalogue([PS1SharedCat, inspectedSExCat])
+  saveStarMag('InspectedStars.txt', inspectedPS1Cat,
+              timeNow, __version__, 'All images', extno=extno)
+  print('{}'.format(len(inspectedPS1Cat)) +
         ' PS1 sources left after manual inspection.')
-  pickleCatalogue(bestCatalogue, 'best.cat')
-  return bestID, bestCatalogue
+  pickleCatalogue(inspectedPS1Cat, 'best.cat')
+  return bestID, inspectedPS1Cat
 
 
 if __name__ == '__main__':
