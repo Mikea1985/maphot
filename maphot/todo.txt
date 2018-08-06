@@ -1,0 +1,6 @@
+fix starchooser
+use wcs to find TNO
+use singe PS1 catalog of shared stars together with SExtractor cat for each file to identify stars for PSF and photometry. 
+PS1_to_LBT colour transforms...
+Basic filtering of sources before inspection (extreme shape, PS1_PSF, saturated)
+Add argument for choosing between Gemini, CFHT, Subaru, LBT. 

@@ -193,8 +193,9 @@ def best(imageArray, repfactor, **kwargs):
   PS1SharedCat = PanSTARRSStuff(catalogueArray, bestID)
   print('{}'.format(len(PS1SharedCat)) +
         ' PS1 sources are visible in all images.')
-  bestData, _, _, _, obsMJD, _, _, _, _ = getDataHeader(imageArray[bestID] +
-                                                        '.fits', extno=extno)
+  bestData, _, _, _, _, MJDm, _, _, _, _, _ = getDataHeader(imageArray[bestID]
+                                                            + '.fits',
+                                                            extno=extno)
   timeNow = datetime.now().strftime('%Y-%m-%d/%H:%M:%S')
   if verbose:
     saveStarMag('PS1SharedCat.txt', PS1SharedCat,
@@ -203,7 +204,7 @@ def best(imageArray, repfactor, **kwargs):
                                    appendSEx=True)
   if verbose:
     saveStarMag('bestSharedPS1SExCat.txt', bestSharedPS1SExCat,
-                timeNow, __version__, obsMJD, extno=extno)
+                timeNow, __version__, MJDm, extno=extno)
   inspectedSExCat = inspectStars(bestData, bestSharedPS1SExCat[:20],
                                  repfactor, SExCatalogue=True,
                                  noVisualSelection=False)

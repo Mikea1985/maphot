@@ -24,17 +24,22 @@ from __future__ import print_function, division
 import os
 import getopt
 import sys
+from six.moves import input
 import numpy as np
+import pylab as pyl
 import mp_ephem
 import requests
 import astropy.io.fits as pyf
+from astropy.visualization import interval
 from astropy.io.votable import parse_single_table
 from astropy.table import Column
 from astropy import wcs
 from trippy import scamp, MCMCfit, psf, psfStarChooser
+from stsci import numdisplay  # pylint: disable=import-error
+from __version__ import __version__
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
-__version__ = 0.3
+print("You are using maphot version: ", __version__)
 
 
 def queryPanSTARRS(ra_deg, dec_deg, rad_deg=0.1, mindet=1, maxsources=10000,
@@ -392,10 +397,17 @@ def saveTNOMag(image_fn, mpc_fn, headerMJD, obsMJD, SExTNOCoord, x_tno, y_tno,
   filtStr = obsFILTER + 'RawMag'
   mag_heads = ''
   mag_strings = ''
-  for ai, am in enumerate(aperMulti):
-    mag_heads += filtStr + str(am) + '\td' + filtStr + str(am) + '\t'
-    mag_strings += '{}\t{}\t'.format(TNOphot.magnitude[ai],
-                                     TNOphot.dmagnitude[ai])
+  try:
+    print(aperMulti[0])
+    for ai, am in enumerate(aperMulti):
+      mag_heads += filtStr + str(am) + '\td' + filtStr + str(am) + '\t'
+      mag_strings += '{}\t{}\t'.format(TNOphot.magnitude[ai],
+                                       TNOphot.dmagnitude[ai])
+  except:
+    mag_heads += (filtStr + str(aperMulti) + '\td'
+                  + filtStr + str(aperMulti) + '\t')
+    mag_strings += '{}\t{}\t'.format(TNOphot.magnitude,
+                                     TNOphot.dmagnitude)
   if extno is None:
     print('Warning: Treating this as a single extension file.')
     TNOFileName = image_fn.replace('.fits', '_TNOmag.txt')
@@ -559,14 +571,20 @@ def getDataHeader(inputFile, extno=None):
         MJD = header['MJDATE']  # CFHT
       except:
         MJD = header['MJD-OBS']  # Gemini/CFHT
+    MJDmid = MJD + EXPTIME / 172800.0
     try:
       GAIN = header['GAINEFF']  # Subaru
     except:
       GAIN = header['GAIN']  # CFHT
     NAXIS1 = header['NAXIS1'] if header['NAXIS1'] > 128 else header['ZNAXIS1']
     NAXIS2 = header['NAXIS2'] if header['NAXIS2'] > 128 else header['ZNAXIS2']
+    try:
+      FILTER = header['FILTER2'][0]  # Gemini
+    except:
+      FILTER = header['FILTER'][0]  # CFHT/Subaru/LBT
   WCS = wcs.WCS(header)
-  return data, header, EXPTIME, MAGZERO, MJD, GAIN, NAXIS1, NAXIS2, WCS
+  return(data, header, EXPTIME, MAGZERO, MJD, MJDmid,
+         GAIN, NAXIS1, NAXIS2, WCS, FILTER)
 
 
 def inspectStars(data, catalogue, repfactor, **kwargs):
@@ -716,6 +734,153 @@ def findSharedPS1Catalogue(catalogueArray, **kwargs):
   we could do with any other catalogue.
   """
   return sharedCatalogue
+
+
+def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
+                   repfact=10, outfile=None, centroid=False, remove=False):
+  ''' Choose between SExtractor position and predicted position.
+  If desirable, use MCMC to fit the TSF to the object, thus centroiding on it.
+  This is often NOT better than the SExtractor location, especially when the
+  object is only barely trailed or when the sky has a gradient
+  (near something bright).
+  This fit is also used to remove the object from the image, later.
+  fit takes time proportional to nWalkers*(2+nBurn+nStep).
+  '''
+  Data = (data[np.max([0, int(yt) - 200]):np.min([NAXIS2 - 1, int(yt) + 200]),
+               np.max([0, int(xt) - 200]):np.min([NAXIS1 - 1, int(xt) + 200])]
+          - bg)
+  dtransy, dtransx = (int(yt) - np.max([0, int(yt) - 200]) - 1,
+                      int(xt) - np.max([0, int(xt) - 200]) - 1)
+  Zoom = (data[np.max([0, int(yt) - 15]):np.min([NAXIS2 - 1, int(yt) + 15]),
+               np.max([0, int(xt) - 15]):np.min([NAXIS1 - 1, int(xt) + 15])]
+          - bg)
+  zy, zx = (int(yt) - np.max([0, int(yt) - 15]) - 1,
+            int(xt) - np.max([0, int(xt) - 15]) - 1)
+  m_obj = np.max(data[np.max([0, int(yt) - 5]):
+                      np.min([NAXIS2 - 1, int(yt) + 5]),
+                      np.max([0, int(xt) - 5]):
+                      np.min([NAXIS1 - 1, int(xt) + 5])])
+  xt0, yt0 = xt, yt
+  while True:  # Breaks once a centroid has been selected.
+    (z1, z2) = numdisplay.zscale.zscale(Zoom)
+    normer = interval.ManualInterval(z1, z2)
+    pyl.imshow(normer(Zoom), origin='lower')
+    pyl.plot([zx + x0 - int(xt0)], [zy + y0 - int(yt0)], 'k*', ms=10)
+    pyl.plot([zx + xt0 - int(xt0)], [zy + yt0 - int(yt0)], 'w+', ms=10, mew=2)
+    if centroid or remove:
+      print("Should I be doing this?")
+      xcent, ycent, fitPars, fitRange = runMCMCCentroid(goodPSF, Data, x0, y0,
+                                                        m_obj, bg,
+                                                        dtransx, dtransy,
+                                                        repfact)
+      print("\nfitPars = ", fitPars, "\nfitRange = ", fitRange, "\n")
+      if outfile is not None:
+        outfile.write("\nfitPars={}".format(fitPars) +
+                      "\nfitRange={}".format(fitRange))
+      pyl.plot([zx + xcent - int(xt0)],
+               [zy + ycent - int(yt0)], 'gx', ms=10, mew=2)
+      print("\n")
+      print("Estimated    (black)  x,y = ", x0, y0)
+      print("SExtractor   (white)  x,y = ", xt, yt)
+      print("MCMCcentroid (green)  x,y = ", xcent, ycent)
+      pyl.show()
+      yn = input('Accept MCMC centroid (m or c), '
+                 + 'SExtractor centroid (S), or estimate (e)? ')
+      if ('e' in yn) or ('E' in yn):  # if press e/E use estimate
+        xt, yt = x0, y0
+        break
+      elif ('m' in yn) or ('M' in yn) or ('c' in yn) or ('C' in yn):  # cntroid
+        xt, yt = xcent, ycent
+        break
+      else:
+        yn = 'S'  # else do nothing, use SExtractor co-ordinates.
+        break
+    else:  # if not previously centroided, check whether needed
+      if (x0 == xt) & (y0 == yt):  # if SExtractor not find TNO, run centroid
+        centroid = True
+      else:  # else pick between estimate, SExtractor and recentroiding
+        print("Estimated    (black)  x,y = ", x0, y0)
+        print("SExtractor   (white)  x,y = ", xt, yt)
+        pyl.show()
+        yn = input('Accept '
+                   + 'SExtractor centroid (S), or estimate (e), '
+                   + ' or recentroid using MCMC (m or c)? ')
+        if ('e' in yn) or ('E' in yn):  # if press e/E use estimate
+          xt, yt = x0, y0
+          break
+        elif ('m' in yn) or ('M' in yn) or ('c' in yn) or ('C' in yn):
+          centroid = True
+          print("Setting centroid={}, will re-centroid".format(centroid))
+        else:
+          yn = 'S'  # else do nothing, use SExtractor co-ordinates.
+          break
+  print("Coordinates chosen from this centroid: {}".format(yn))
+  if outfile is not None:
+    outfile.write("\nCoordinates chosen from this centroid: {}".format(yn))
+  return xt, yt, yn
+
+
+def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
+              outfile=None, repfact=10, remove=True):
+  '''Remove a TSF.
+  If remove=False, will not remove, just saves postage-stamp around xt, yt.'''
+  Data = (data[np.max([0, int(yt) - 200]):np.min([NAXIS2 - 1, int(yt) + 200]),
+               np.max([0, int(xt) - 200]):np.min([NAXIS1 - 1, int(xt) + 200])]
+          - bg)
+  dtransy = int(yt) - np.max([0, int(yt) - 200]) - 1
+  dtransx = int(xt) - np.max([0, int(xt) - 200]) - 1
+  m_obj = np.max(data[np.max([0, int(yt) - 5]):
+                      np.min([NAXIS2 - 1, int(yt) + 5]),
+                      np.max([0, int(xt) - 5]):
+                      np.min([NAXIS1 - 1, int(xt) + 5])])
+  if remove:
+    print("Should I be doing this?")
+    fitter = MCMCfit.MCMCfitter(goodPSF, Data)
+    fitter.fitWithModelPSF(dtransx + xt - int(xt), dtransy + yt - int(yt),
+                           m_in=m_obj / repfact ** 2., fitWidth=2, nWalkers=10,
+                           nBurn=10, nStep=10, bg=bg, useLinePSF=True,
+                           verbose=True, useErrorMap=False)
+    (fitPars, fitRange) = fitter.fitResults(0.67)
+    print("\nfitPars = ", fitPars, "\n")
+    print("\nfitRange = ", fitRange, "\n")
+    if outfile is not None:
+      outfile.write("\nfitPars={}".format(fitPars))
+      outfile.write("\nfitRange={}".format(fitRange))
+    removed = goodPSF.remove(fitPars[0], fitPars[1], fitPars[2],
+                             Data, useLinePSF=True)
+    (z1, z2) = numdisplay.zscale.zscale(removed)
+    normer = interval.ManualInterval(z1, z2)
+    modelImage = goodPSF.plant(fitPars[0], fitPars[1], fitPars[2], Data,
+                               addNoise=False, useLinePSF=True,
+                               returnModel=True)
+    pyl.imshow(normer(goodPSF.lookupTable), origin='lower')
+    pyl.show()
+    #pyl.imshow(normer(modelImage), origin='lower')
+    #pyl.show()
+    #pyl.imshow(normer(Data), origin='lower')
+    #pyl.show()
+    #pyl.imshow(normer(removed), origin='lower')
+    #pyl.show()
+    hdu = pyf.PrimaryHDU(modelImage, header=header)
+    list = pyf.HDUList([hdu])
+    list.writeto(inputName + '_modelImage.fits', overwrite=True)
+    hdu = pyf.PrimaryHDU(removed, header=header)
+    list = pyf.HDUList([hdu])
+    list.writeto(inputName + '_removed.fits', overwrite=True)
+  else:
+    (z1, z2) = numdisplay.zscale.zscale(Data)
+    normer = interval.ManualInterval(z1, z2)
+    pyl.imshow(normer(goodPSF.lookupTable), origin='lower')
+    pyl.show()
+    #pyl.imshow(normer(Data), origin='lower')
+    #pyl.show()
+  hdu = pyf.PrimaryHDU(goodPSF.lookupTable, header=header)
+  list = pyf.HDUList([hdu])
+  list.writeto(inputName + '_lookupTable.fits', overwrite=True)
+  hdu = pyf.PrimaryHDU(Data, header=header)
+  list = pyf.HDUList([hdu])
+  list.writeto(inputName + '_Data.fits', overwrite=True)
+  return
 
 
 # End of file.
