@@ -31,7 +31,7 @@ from trippy import psf, pill
 import best
 from maphot_functions import (getArguments, getObservations, coordRateAngle,
                               getSExCatalog, predicted2catalog,
-                              saveTNOmag, saveStarMag,
+                              saveTNOMag, saveStarMag,
                               getDataHeader, addPhotToCatalog, PS1_vs_SEx,
                               PS1_to_CFHT, CFHT_to_PS1, inspectStars,
                               chooseCentroid, removeTSF)
@@ -83,14 +83,12 @@ with open(coordsfile) as han:
     mpc = han.readlines()
 observations = getObservations(mpc)
 TNOorbit = mp_ephem.BKOrbit(observations)
-TNOcoord, rate, angle = coordRateAngle(TNOorbit, MJDm, WCS)
-print('TNO predicted to be at {},\nmoving at '.format(TNOcoord) +
+TNOpred, rate, angle = coordRateAngle(TNOorbit, MJDm, WCS)
+print('TNO predicted to be at {},\nmoving at '.format(TNOpred) +
       '{} pix/hr inclined {} deg (to x+).'.format(rate, angle))
-outfile.write('\nTNO predicted to be at {},\nmoving at '.format(TNOcoord) +
+outfile.write('\nTNO predicted to be at {},\nmoving at '.format(TNOpred) +
               '{} pix/hr inclined {} deg (to x+).'.format(rate, angle))
-
-#Estimated TNO pixel location.
-xPred, yPred = WCS.wcs_world2pix(TNOcoord, 1)
+xPred, yPred = TNOpred
 
 #Get the Source Extractor catalogue
 if SExParFile is None:
@@ -99,26 +97,35 @@ else:
   SEx_params = np.genfromtxt(SExParFile)
 fullSExCat = getSExCatalog(inputFile, SEx_params, extno=extno)
 
+#Find the SourceExtractor source nearest to the predicted location.
+TNOSEx, centroidShift = predicted2catalog(fullSExCat, TNOpred)
+xSEx, ySEx = TNOSEx
 #If using the Source Extractor centroid is undesirable, set overrideSEx=True
 #Otherwise, the source nearest the predicted TNO location is used.
-xSEx, ySEx, centroidShift = predicted2catalog(fullSExCat, TNOcoord)
 if (centroidShift > 15) | overrideSEx:
+  print("SourceExtractor location no good (maybe didn't find TNO?)")
+  print('Will use predicted location instead.')
+  outfile.write("\nSourceExtractor location no good (maybe didn't find TNO?)")
+  outfile.write('\nWill use predicted location instead.')
+  centroid = True
   xUse, yUse = xPred, yPred  # Use predicted location.
 else:
   xUse, yUse = xSEx, ySEx  # Use SExtractor location
 print("xUse, yUse = ", xUse, yUse)
-outfile.write("xUse, yUse = {}, {}\n".format(xUse, yUse))
+outfile.write("\nxUse, yUse = {}, {}\n".format(xUse, yUse))
 
 # Read in catalogue of good stars
+bestCatName = ('best.cat' if extno is None
+               else 'best{0:02.0f}.cat'.format(extno))
 try:
-  bestCat = best.unpickleCatalogue('best.cat')
+  bestCat = best.unpickleCatalogue(bestCatName)
   print('Success!')
 except IOError:
-  print('Uh oh! Unpickling unsuccesful. Does best.cat exist?')
+  print('Uh oh! Unpickling unsuccesful. Does ' + bestCatName + ' exist?')
   print('If not, run best.best([fitsList]).')
   #best.best([glob.glob('*.fits')], repfact)
-  #bestCat = best.unpickleCatalogue('best.cat')
-  raise IOError('best.cat missing. Run best.best')
+  #bestCat = best.unpickleCatalogue(bestCatName)
+  raise IOError(bestCatName + ' missing. Run best.best')
 # Match phot stars to PS1 catalog
 catalog_psf = PS1_vs_SEx(bestCat, fullSExCat, maxDist=1.0, appendSEx=True)
 catalog_phot = catalog_psf
@@ -250,7 +257,8 @@ outfile.write("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
 
 # Add photometry to the star catalog
 magKeyName = FILTER + 'MagTrippy' + str(bestap)
-PS1PhotCat = addPhotToCatalog(goodFits[:, 4], goodFits[:, 5], catalog_phot,
+PS1PhotCat = addPhotToCatalog(catalog_phot['XWIN_IMAGE'],
+                              catalog_phot['YWIN_IMAGE'], catalog_phot,
                               {magKeyName: starPhot.magnitude,
                                'd' + magKeyName: starPhot.dmagnitude,
                                'TrippySourceFlux': starPhot.sourceFlux,
@@ -274,7 +282,7 @@ finalTNOphotPS1 = CFHT_to_PS1(finalTNOphotCFHT[0], finalTNOphotCFHT[1], FILTER)
 TNOCoords = WCS.all_pix2world(xUse, yUse, 1)
 #Save TNO magnitudes neatly.
 timeNow = datetime.now().strftime('%Y-%m-%d/%H:%M:%S')
-saveTNOmag(inputFile, coordsfile, MJD, MJDm, TNOCoords, xUse, yUse,
+saveTNOMag(inputFile, coordsfile, MJD, MJDm, TNOCoords, xUse, yUse,
            MAGZERO, FILTER, fwhm, bestap, TNOPhot,
            magCalibration, dmagCalibration, finalTNOphotCFHT, zptGood,
            finalTNOphotPS1, timeNow, TNOPhot.bgSamplingRegion,

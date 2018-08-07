@@ -13,6 +13,7 @@ from datetime import datetime
 import pickle
 import numpy as np
 import astropy.io.fits as pyf
+from astropy.table.table import Table
 from maphot_functions import (getSExCatalog, inspectStars,
                               queryPanSTARRS, readPanSTARRS, PS1_vs_SEx,
                               getDataHeader, findSharedPS1Catalogue,
@@ -133,9 +134,10 @@ def pickleCatalogue(catalogue, filename, **kwargs):
   if kwargs:
     raise TypeError('Unexpected **kwargs: %r' % kwargs)
   outfile = open(filename, 'wb')
-  pickle.dump(catalogue, outfile, pickle.HIGHEST_PROTOCOL)
-  print("Catalogue pickled." if verbose else "")
+  pickle.dump(Table(catalogue, masked=False), outfile, pickle.HIGHEST_PROTOCOL)
   outfile.close()
+  print("Catalogue pickled." if verbose else "")
+  return
 
 
 def unpickleCatalogue(filename, **kwargs):
@@ -213,7 +215,9 @@ def best(imageArray, repfactor, **kwargs):
               timeNow, __version__, 'All images', extno=extno)
   print('{}'.format(len(inspectedPS1Cat)) +
         ' PS1 sources left after manual inspection.')
-  pickleCatalogue(inspectedPS1Cat, 'best.cat')
+  bestCatName = ('best.cat' if extno is None
+                 else 'best{0:02.0f}.cat'.format(extno))
+  pickleCatalogue(inspectedPS1Cat, bestCatName)
   return bestID, inspectedPS1Cat
 
 

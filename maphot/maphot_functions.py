@@ -326,7 +326,7 @@ def getArguments(sysargv, useage):
       elif opt in ('-s', '--sexparfile'):
         Asexparfile = float(arg)
       elif opt in ('-e', '--extension'):
-        Aextno = float(arg)
+        Aextno = int(arg)
   except TypeError as error:
     print(error)
     sys.exit()
