@@ -10,6 +10,7 @@ from __future__ import print_function, division
 import getopt
 import sys
 from datetime import datetime
+import warnings
 import pickle
 import numpy as np
 import astropy.io.fits as pyf
@@ -87,11 +88,12 @@ def getArguments(sysargv):
   filenameFile = 'files.txt'  # Change with '-f <filename>' flag
   repfactor = 10
   verbose = False
+  ignoreWarns = False
   extno = None
   try:
-    options, dummy = getopt.getopt(sysargv[1:], "f:v:h:r:e",
-                                   ["ifile=", "verbose=", "repfactor=",
-                                    "extension="])
+    options, dummy = getopt.getopt(sysargv[1:], "f:v:h:r:e:i:",
+                                   ["filenamefile=", "verbose=", "repfactor=",
+                                    "extension=", "ignoreWarnings="])
   except TypeError as error:
     print(error)
     sys.exit()
@@ -102,18 +104,18 @@ def getArguments(sysargv):
   else:
     print(options)
     for opt, arg in options:
-      if opt in ("-v", "-verbose"):
+      if opt in ("-v", "--verbose", "-i", "--ignoreWarnings"):
         if arg == '0' or arg == 'False':
           arg = False
         elif arg == '1' or arg == 'True':
           arg = True
         else:
           print(opt, arg, np.array([arg]).dtype)
-          raise TypeError("-v flags must be followed by " +
+          raise TypeError("-v and -i flags must be followed by " +
                           "0/False/1/True")
       if opt == '-h':
-        print('best -f <filename>')
-      elif opt in ('-f', '--ifile'):
+        print('best -f <filenamefile> -e <extension> -i <ignoreWarnings>')
+      elif opt in ('-f', '--filenamefile'):
         filenameFile = arg
       elif opt in ('-v', '--verbose'):
         verbose = arg
@@ -121,11 +123,13 @@ def getArguments(sysargv):
         repfactor = arg
       elif opt in ('-e', '--extension'):
         extno = int(arg)
+      elif opt in ('-i', '--ignoreWarnings'):
+        ignoreWarns = arg
     imageArray = np.array([ia.replace('.fits', '')
                            for ia in np.genfromtxt(filenameFile,
                                                    usecols=(0), dtype=str)])
   print(imageArray)
-  return imageArray, repfactor, verbose, extno
+  return imageArray, repfactor, verbose, extno, ignoreWarns
 
 
 def pickleCatalogue(catalogue, filename, **kwargs):
@@ -162,12 +166,12 @@ def PanSTARRSStuff(SExCatalogArray, bestID):
   RADecString = '{0:05.1f}_{1:+4.1f}'.format(obsRA, obsDec)
   try:
     PS1Catalog = readPanSTARRS('panstarrs_' + RADecString + '.xml',
-                               PSF_Kron=5.5)
+                               PSF_Kron=0.3)
   except IOError:
     queryPanSTARRS(obsRA, obsDec, rad_deg=0.3,
                    catalog_filename='panstarrs_' + RADecString + '.xml')
     PS1Catalog = readPanSTARRS('panstarrs_' + RADecString + '.xml',
-                               PSF_Kron=5.5)
+                               PSF_Kron=0.3)
   print('A Pan-STARRS catalog has been loaded with '
         + '{} entries.'.format(len(PS1Catalog)))
   #Match the PS1 sources to the SExtractor catalog. Only keep matched pairs.
@@ -176,7 +180,6 @@ def PanSTARRSStuff(SExCatalogArray, bestID):
     PS1CatArray.append(PS1_vs_SEx(PS1Catalog, SExCatalog, maxDist=2.5,
                                   appendSEx=False))
   PS1SharedCat = findSharedPS1Catalogue(PS1CatArray)
-  print(PS1SharedCat)
   return PS1SharedCat
 
 
@@ -207,7 +210,7 @@ def best(imageArray, repfactor, **kwargs):
   if verbose:
     saveStarMag('bestSharedPS1SExCat.txt', bestSharedPS1SExCat,
                 timeNow, __version__, MJDm, extno=extno)
-  inspectedSExCat = inspectStars(bestData, bestSharedPS1SExCat[:20],
+  inspectedSExCat = inspectStars(bestData, bestSharedPS1SExCat[:],
                                  repfactor, SExCatalogue=True,
                                  noVisualSelection=False)
   inspectedPS1Cat = findSharedPS1Catalogue([PS1SharedCat, inspectedSExCat])
@@ -222,7 +225,11 @@ def best(imageArray, repfactor, **kwargs):
 
 
 if __name__ == '__main__':
-  images, repfact, verbatim, extension = getArguments(sys.argv)
+  images, repfact, verbatim, extension, ignoreWarnings = getArguments(sys.argv)
+  #Ignore all Python warnings.
+  #This is generally a terrible idea, and should be turned off for de-bugging.
+  if ignoreWarnings:
+    warnings.filterwarnings("ignore")
   bestImage, bestCat = best(images, repfact, extno=extension, verbose=verbatim)
   print('Best catalogue:')
   print(bestCat)

@@ -275,42 +275,43 @@ def runMCMCCentroid(centPSF, centData, centxt, centyt, centm,
   return xcentroid, ycentroid, centfitPars, centfitRange
 
 
-def getArguments(sysargv, useage):
+def getArguments(sysargv):
   """Get arguments given when this is called from a command line"""
+  useage = ('maphot -c <MPCfile> -f <imagefile> -e <extension>'
+            + ' -i <ignoreWarnings> [-v <verbose>  -. <centroid> '
+            + '-o <overrideSEx> -r <remove> -a <aprad> -s <sexparfile>]')
   AinputFile = 'a100.fits'  # Change with '-f <filename>' flag
   Acoordsfile = 'coords.in'  # Change with '-c <coordsfile>' flag
   Averbose = False  # Change with '-v True' or '--verbose True'
   Acentroid = False  # Change with '-. False' or  --centroid False'
   AoverrideSEx = False  # Change with '-o True' or '--override True'
   Aremove = False  # Change with '-r False' or '--remove False'
-  Aaprad = -42.
-  Arepfact = 10
-  Apxscale = 1.0
-  AroundAperRad = 1.4
-  Asexparfile = None
-  Aextno = None
+  Aaprad, AroundAperRad = 0.7, 1.4  # Negative Aaprad = find optimal
+  Arepfact, Apxscale, = 10, 1.0
+  Asexparfile, Aextno = None, None
+  AignoreWarnings = False
   try:
-    options, dummy = getopt.getopt(sysargv[1:], "f:c:v:.:o:r:a:h:s:e:",
-                                   ["ifile=", "coords=", "verbose=",
+    options, dummy = getopt.getopt(sysargv[1:], "f:c:v:.:o:r:a:h:s:e:i:",
+                                   ["imagefile=", "MPCfile=", "verbose=",
                                     "centroid=", "overrideSEx=",
                                     "remove=", "aprad=", "sexparfile=",
-                                    "extension="])
+                                    "extension=", "ignoreWarnings="])
     for opt, arg in options:
       if (opt in ("-v", "-verbose", "-.", "--centroid", "-o", "--overrideSEx",
-                  "-r", "--remove")):
+                  "-r", "--remove", "-i", "--ignoreWarnings")):
         if arg == '0' or arg == 'False':
           arg = False
         elif arg == '1' or arg == 'True':
           arg = True
         else:
           print(opt, arg, np.array([arg]).dtype)
-          raise TypeError("-v -. -o -r flags must be followed by " +
+          raise TypeError("-v -. -o -r -i flags must be followed by " +
                           "0/False/1/True")
       if opt == '-h':
         print(useage)
-      elif opt in ('-f', '--ifile'):
+      elif opt in ('-f', '--imagefile'):
         AinputFile = arg
-      elif opt in ('-c', '--coords'):
+      elif opt in ('-c', '--MPCfile'):
         Acoordsfile = arg
       elif opt in ('-v', '--verbose'):
         Averbose = arg
@@ -326,16 +327,17 @@ def getArguments(sysargv, useage):
         Asexparfile = float(arg)
       elif opt in ('-e', '--extension'):
         Aextno = int(arg)
+      elif opt in ('-i', '--ignoreWarnings'):
+        AignoreWarnings = arg
   except TypeError as error:
     print(error)
     sys.exit()
   except getopt.GetoptError as error:
-    print(" Input ERROR! ")
-    print(useage)
+    print(" Input ERROR! \n", useage)
     sys.exit(2)
   return (AinputFile, Acoordsfile, Averbose, Acentroid,
           AoverrideSEx, Aremove, Aaprad, Arepfact, Apxscale, AroundAperRad,
-          Asexparfile, Aextno)
+          Asexparfile, Aextno, AignoreWarnings)
 
 
 def findTNO(xzero, yzero, fullcat, outfile):
@@ -599,7 +601,6 @@ def inspectStars(data, catalogue, repfactor, **kwargs):
   if kwargs:
     raise TypeError('Unexpected **kwargs: %r' % kwargs)
   print(np.shape(data))
-  print(catalogue)
   try:
     starChooser = psfStarChooser.starChooser(data, catalogue['XWIN_IMAGE'],
                                              catalogue['YWIN_IMAGE'],

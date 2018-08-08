@@ -23,6 +23,7 @@ in order to predict the location in that image.
 from __future__ import print_function, division
 import sys
 from datetime import datetime
+import warnings
 from six.moves import zip
 import numpy as np
 import mp_ephem
@@ -46,8 +47,12 @@ print("You are using maphot version: ", __version__)
 useage = 'maphot -c <coordsfile> -f <fitsfile> -v False '\
          + '-. False -o False -r False -a 0.7'
 (inputFile, coordsfile, verbose, centroid, overrideSEx, remove,
- aprad, repfact, pxscale, roundAperRad, SExParFile, extno
- ) = getArguments(sys.argv, useage)
+ aprad, repfact, pxscale, roundAperRad, SExParFile, extno, ignoreWarnings
+ ) = getArguments(sys.argv)
+#Ignore all Python warnings.
+#This is generally a terrible idea, and should be turned off for de-bugging.
+if ignoreWarnings:
+  warnings.filterwarnings("ignore")
 
 print("ifile =", inputFile, ", coords =", coordsfile, ", verbose =", verbose,
       ", centroid =", centroid, ", overrideSEx =", overrideSEx,
@@ -194,7 +199,7 @@ for xcat, ycat in np.array(list(zip(catalog_phot['XWIN_IMAGE'],
   outfile.write("\n{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f}".format(
                 xcat, ycat, starPhot.magnitude - roundAperCorr,
                 starPhot.dmagnitude))
-  magStars.append(starPhot.magnitude)
+  magStars.append(starPhot.magnitude - roundAperCorr)
   dmagStars.append(starPhot.dmagnitude)
   fluxStars.append(starPhot.sourceFlux)
   SNRStars.append(starPhot.snr)
@@ -281,7 +286,7 @@ magCalibration = np.median(magCalibArray)
 dmagCalibration = np.std(magCalibArray)
 
 # Correct the TNO magnitude and zero point
-finalTNOphotCFHT = (TNOPhot.magnitude + magCalibration,
+finalTNOphotCFHT = (TNOPhot.magnitude - lineAperCorr + magCalibration,
                     (TNOPhot.dmagnitude ** 2
                      + dmagCalibration ** 2) ** 0.5)
 zptGood = MAGZERO + magCalibration
