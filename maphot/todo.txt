@@ -1,3 +1,4 @@
+Save stars used for PSF, so that only those get used for photometry calibration
 Basic filtering of sources before inspection (extreme shape, PS1_PSF, saturated)
 Update usage help information
 PS1_to_LBT colour transforms...

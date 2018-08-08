@@ -171,7 +171,11 @@ goodPSF.psfStore(inputName + '_psf.fits')
 # Do photometry for the trimmed catalog stars.
 # This will be used to find a set of non-variable stars, in order to
 # subtract fluctuations due to seeing, airmass, etc.
-bgstars = []
+bgStars = []
+magStars = []
+dmagStars = []
+fluxStars = []
+SNRStars = []
 print('Photometry of catalog stars')
 outfile.write("\n# Photometry of catalog stars\n")
 outfile.write("\n#   x       y   magnitude  dmagnitude")
@@ -190,10 +194,14 @@ for xcat, ycat in np.array(list(zip(catalog_phot['XWIN_IMAGE'],
   outfile.write("\n{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f}".format(
                 xcat, ycat, starPhot.magnitude - roundAperCorr,
                 starPhot.dmagnitude))
-  bgstars.append(starPhot.bg)
+  magStars.append(starPhot.magnitude)
+  dmagStars.append(starPhot.dmagnitude)
+  fluxStars.append(starPhot.sourceFlux)
+  SNRStars.append(starPhot.snr)
+  bgStars.append(starPhot.bg)
 
 (xUse, yUse, centroidUsed
- ) = chooseCentroid(data, xUse, yUse, xPred, yPred, np.median(bgstars),
+ ) = chooseCentroid(data, xUse, yUse, xPred, yPred, np.median(bgStars),
                     goodPSF, NAXIS1, NAXIS2, outfile=outfile, repfact=repfact,
                     centroid=centroid, remove=remove)
 
@@ -242,13 +250,13 @@ outfile.write("\nTNOPhot.sourceFlux={}".format(TNOPhot.sourceFlux))
 outfile.write("\nTNOPhot.snr={}".format(TNOPhot.snr))
 outfile.write("\nTNOPhot.bg={}".format(TNOPhot.bg))
 
-print("\nFINAL RESULT!")
+print("\nFINAL (non-calibrated) RESULT!")
 print("#{0:12} {1:13} {2:13} {3:13} {4:13}".format(
       '   x ', '    y ', ' magnitude ', '  dmagnitude ', ' magzero '))
 print("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
       xUse, yUse, TNOPhot.magnitude - lineAperCorr,
       TNOPhot.dmagnitude, MAGZERO))
-outfile.write("\nFINAL RESULT!")
+outfile.write("\nFINAL (non-calibrated) RESULT!")
 outfile.write("\n#{0:12} {1:13} {2:13} {3:13} {4:13}\n".format(
               '   x ', '    y ', ' magnitude ', '  dmagnitude ', ' magzero '))
 outfile.write("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
@@ -259,11 +267,11 @@ outfile.write("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
 magKeyName = FILTER + 'MagTrippy' + str(bestap)
 PS1PhotCat = addPhotToCatalog(catalog_phot['XWIN_IMAGE'],
                               catalog_phot['YWIN_IMAGE'], catalog_phot,
-                              {magKeyName: starPhot.magnitude,
-                               'd' + magKeyName: starPhot.dmagnitude,
-                               'TrippySourceFlux': starPhot.sourceFlux,
-                               'TrippySNR': starPhot.snr,
-                               'TrippyBG': starPhot.bg})
+                              {magKeyName: np.array(magStars),
+                               'd' + magKeyName: np.array(dmagStars),
+                               'TrippySourceFlux': np.array(fluxStars),
+                               'TrippySNR': np.array(SNRStars),
+                               'TrippyBG': np.array(bgStars)})
 # Convert star catalog's PS1 magnitudes to CFHT magnitudes
 finalCat = PS1_to_CFHT(PS1PhotCat)
 # Calculate magnitude calibration factor
@@ -285,16 +293,16 @@ timeNow = datetime.now().strftime('%Y-%m-%d/%H:%M:%S')
 saveTNOMag(inputFile, coordsfile, MJD, MJDm, TNOCoords, xUse, yUse,
            MAGZERO, FILTER, fwhm, bestap, TNOPhot,
            magCalibration, dmagCalibration, finalTNOphotCFHT, zptGood,
-           finalTNOphotPS1, timeNow, TNOPhot.bgSamplingRegion,
+           finalTNOphotPS1, timeNow, np.array(TNOPhot.bgSamplingRegion),
            __version__, extno=extno)
-saveStarMag(inputFile, timeNow, __version__, finalCat, MJD)
+saveStarMag(inputFile, finalCat, timeNow, __version__, MJD, extno=extno)
 
 # You could stop here.
 # However, to confirm that things are working well,
 # let's generate the trailed PSF and subtract the object out of the image.
-if centroid and (('e' in centroidUsed) or ('E' in centroidUsed) or
-                 ('s' in centroidUsed) or ('S' in centroidUsed)):
-  remove = True
+#if centroid and (('e' in centroidUsed) or ('E' in centroidUsed) or
+#                 ('s' in centroidUsed) or ('S' in centroidUsed)):
+#  remove = True
 removeTSF(data, xUse, yUse, TNOPhot.bg, goodPSF, NAXIS1, NAXIS2, header,
           inputName + '{0:02.0f}'.format(extno), outfile=outfile,
           repfact=repfact, remove=remove)

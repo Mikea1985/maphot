@@ -32,7 +32,7 @@ import requests
 import astropy.io.fits as pyf
 from astropy.visualization import interval
 from astropy.io.votable import parse_single_table
-from astropy.table import Column
+from astropy.table import Column, Table
 from astropy import wcs
 from trippy import scamp, MCMCfit, psf, psfStarChooser
 from stsci import numdisplay  # pylint: disable=import-error
@@ -259,7 +259,6 @@ def runMCMCCentroid(centPSF, centData, centxt, centyt, centm,
   """runMCMCCentroid runs an MCMC centroiding, fitting the TSF to the data.
   Returns the fitted centoid co-ordinates.
   """
-  print("Should I be doing this?")
   print("MCMC-fitting TSF to the moving object")
   centfitter = MCMCfit.MCMCfitter(centPSF, centData)
   centfitter.fitWithModelPSF(centdtransx + centxt - int(centxt),
@@ -428,7 +427,7 @@ def saveTNOMag(image_fn, mpc_fn, headerMJD, obsMJD, SExTNOCoord, x_tno, y_tno,
   TNOFile.write('{}\t{}\t'.format(image_fn, mpc_fn) +
                 '{}\t{}\t'.format(headerMJD, obsMJD) +
                 '{}\t{}\t'.format(SExTNOCoord[0], SExTNOCoord[1]) +
-                '{}\t{}\t{}\t'.format(x_tno[0], y_tno[0], zpt) +
+                '{}\t{}\t{}\t'.format(x_tno, y_tno, zpt) +
                 '{}\t{}\t'.format(obsFILTER, FWHM) + mag_strings +
                 '{}\t{}\t'.format(magCalibration, dmagCalibration) +
                 '{}\t{}\t'.format(finalTNOphotINST[0], finalTNOphotINST[1]) +
@@ -492,6 +491,9 @@ def PS1_to_CFHT(catalog, filters='griz'):
              'i': [0.006, -0.024, 0.00627, -0.00523],
              'z': [-0.016, -0.069, 0.0239, -0.0056]}
   CFHTCat = catalog.copy()
+  new_columns = []
+  for key in CFHTCat.keys():
+    new_columns.append(CFHTCat[key])
   for CFHfilt in filters:
     c = conpars[CFHfilt]
     PS1toCFHT = Column(catalog[CFHfilt + 'MeanPSFMag'] + c[0] + c[1] * PS1gi
@@ -499,8 +501,9 @@ def PS1_to_CFHT(catalog, filters='griz'):
                        name=CFHfilt + 'MeanPSFMag_CFHT',
                        description=catalog[CFHfilt + 'MeanPSFMag'].description
                        + ' transformed to CFHT filter')
-    CFHTCat.add_columns((PS1toCFHT))
-  return CFHTCat
+    new_columns.append(PS1toCFHT)
+  newColumnsTable = Table(new_columns)
+  return newColumnsTable
 
 
 def CFHT_to_PS1(magnitude, mag_uncertainty, filter_name='r'):
