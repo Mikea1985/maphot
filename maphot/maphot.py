@@ -37,6 +37,7 @@ from maphot_functions import (getArguments, getObservations, coordRateAngle,
                               PS1_to_CFHT, CFHT_to_PS1, inspectStars,
                               chooseCentroid, removeTSF)
 from __version__ import __version__
+from pix2world import pix2world
 
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
@@ -311,6 +312,9 @@ saveStarMag(inputFile, finalCat, timeNow, __version__, MJD, extno=extno)
 removeTSF(data, xUse, yUse, TNOPhot.bg, goodPSF, NAXIS1, NAXIS2, header,
           inputName + '{0:02.0f}'.format(extno), outfile=outfile,
           repfact=repfact, remove=remove)
+
+#Run function to save photometry in MPC format
+pix2world(inputFile, EXPTIME, MJD, finalTNOphotPS1[0], xUse, yUse, FILTER, extno)
 
 print('Done with ' + inputFile + '!')
 outfile.close()
