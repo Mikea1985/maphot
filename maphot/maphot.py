@@ -35,7 +35,8 @@ from maphot_functions import (getArguments, getObservations, coordRateAngle,
                               saveTNOMag, saveStarMag,
                               getDataHeader, addPhotToCatalog, PS1_vs_SEx,
                               PS1_to_CFHT, CFHT_to_PS1, inspectStars,
-                              chooseCentroid, removeTSF)
+                              chooseCentroid, removeTSF,
+                              extractGoodStarCatalogue)
 from __version__ import __version__
 from pix2world import pix2world
 
@@ -134,7 +135,6 @@ except IOError:
   raise IOError(bestCatName + ' missing. Run best.best')
 # Match phot stars to PS1 catalog
 catalog_psf = PS1_vs_SEx(bestCat, fullSExCat, maxDist=1.0, appendSEx=True)
-catalog_phot = catalog_psf
 
 # Restore PSF if exist, otherwise build it.
 try:
@@ -145,6 +145,7 @@ try:
 #  goodPSF.fitted=False
   print("fwhm = ", fwhm)
   outfile.write("\nfwhm = {}\n".format(fwhm))
+  goodStars = np.genfromtxt(inputName + '_goodStars.txt', usecols=(0, 1))
 except IOError:
   print("Could not restore PSF (Normal unless previously saved)")
   print("Making new one.")
@@ -156,10 +157,21 @@ except IOError:
   outfile.write("\ngoodSTDs={}".format(goodSTDs))
   outfile.write("\n fwhm = {}\n".format(goodPSF))
   outfile.write("\n fwhm = {}\n".format(fwhm))
+  goodStars = goodFits[:, 4:6]
+  goodStarsFile = open(inputName + '_goodStars.txt', 'w')
+  for i in np.arange(len(goodStars[:, 0])):
+    goodStarsFile.write("{} {}\n".format(goodStars[i, 0], goodStars[i, 1]))
+  goodStarsFile.close()
+  print(goodFits)
 except UnboundLocalError:
   print("Data error occurred!")
   outfile.write("\nData error occured!\n")
   raise
+
+print(goodStars)
+#catalog_phot = extractGoodStarCatalogue(catalog_psf, goodStars[:, 0],
+#                                        goodStars[:, 1])
+catalog_phot = catalog_psf
 
 goodPSF.line(rate, angle, EXPTIME / 3600., pixScale=pxscale,
              useLookupTable=True)
@@ -314,7 +326,8 @@ removeTSF(data, xUse, yUse, TNOPhot.bg, goodPSF, NAXIS1, NAXIS2, header,
           repfact=repfact, remove=remove)
 
 #Run function to save photometry in MPC format
-pix2world(inputFile, EXPTIME, MJD, finalTNOphotPS1[0], xUse, yUse, FILTER, extno)
+pix2world(inputFile, EXPTIME, MJD, finalTNOphotPS1[0], xUse, yUse, FILTER,
+          extno)
 
 print('Done with ' + inputFile + '!')
 outfile.close()
