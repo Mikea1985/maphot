@@ -350,7 +350,7 @@ removeTSF(data, xUse, yUse, TNOPhot.bg, goodPSF, NAXIS1, NAXIS2, header,
           inputName, outfile=outfile, repfact=repfact, remove=remove)
 
 #Run function to save photometry in MPC format
-pix2world(inputFile, EXPTIME, MJD, finalTNOphotPS1[0], xUse, yUse, FILTER,
+pix2world(WCS, EXPTIME, MJD, finalTNOphotPS1[0], xUse, yUse, FILTER,
           extno)
 
 print('Done with ' + inputFile + '!')

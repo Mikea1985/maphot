@@ -1,34 +1,22 @@
 """
-This function reads in the wcs header of a file,
-then converts an x-y pixel coordinate to a RA and Dec.
+This function converts a bunch of inputs to a nicely formatted MPC line.
 """
+from __future__ import print_function, division
 import datetime
 from astropy import units as u
 from astropy.coordinates import Angle
-from astropy.io import fits
-#import astropy.io.fits as pyf
 from astropy.time import Time
-from astropy import wcs
 
-def pix2world(fitsfile, expt, mjd, mg, xc, yc, fil, extn, observatory=568): 
+def pix2MPC(WCS, aEXPTIME, aMJD, mag, xcoo, ycoo, filtr, extn,
+            observatory=568):
   """
   This function takes variables (given in maphot.py),
-  reads in the wcs header of a file,
   then converts an x-y pixel coordinate to a RA and Dec.
   Also converts the time of observation to an MPC friendly format.
   Returns an MPC formatted line.
   """
-  aEXPTIME = expt #EXPTIME
-  aMJD = mjd #MJD
-  mag = mg #finalTNOphotPS1[0]
-  xcoo = xc #xUse
-  ycoo = yc #yUse
-  filter = fil #FILTER
   name = 'extno{0:02.0f}'.format(extn)
-  #Get WCS and convert pixel coordinates to world coordinates
-  hdulist = fits.open(fitsfile)
-  #WCS = wcs.WCS(hdulist[0].header)
-  WCS = wcs.WCS(hdulist[extn].header)
+  #Convert pixel coordinates to world coordinates
   ra, dec = WCS.all_pix2world(xcoo, ycoo, 1)
   #Convert the ra/dec (which is in degrees) to sexagesimals
   raString = Angle(str(ra) + 'degrees').to_string(unit=u.hour,
@@ -45,7 +33,7 @@ def pix2world(fitsfile, expt, mjd, mg, xc, yc, fil, extn, observatory=568):
   #Put it all together in an MPC line
   MPCString = ('     ' + name + '  C' + midTimeString[:16] + ' ' +
                raString[:12] + decString[:12] +
-               '         {0:4.1f} '.format(mag) + filter[:1] +
+               '         {0:4.1f} '.format(mag) + filtr[:1] +
                '      {0:3.0f}'.format(observatory))
   wf = open("{}.mpc".format(name), "a+")
   wf.write("{}\n".format(MPCString))
