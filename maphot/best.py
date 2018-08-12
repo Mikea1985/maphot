@@ -18,7 +18,7 @@ from astropy.table.table import Table
 from maphot_functions import (getSExCatalog, inspectStars,
                               queryPanSTARRS, readPanSTARRS, PS1_vs_SEx,
                               getDataHeader, findSharedPS1Catalogue,
-                              saveStarMag)
+                              saveStarMag, trimCatalog)
 from __version__ import __version__
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
@@ -166,12 +166,12 @@ def PanSTARRSStuff(SExCatalogArray, bestID):
   RADecString = '{0:05.1f}_{1:+4.1f}'.format(obsRA, obsDec)
   try:
     PS1Catalog = readPanSTARRS('panstarrs_' + RADecString + '.xml',
-                               PSF_Kron=0.3)
+                               PSF_Kron=0.4)
   except IOError:
     queryPanSTARRS(obsRA, obsDec, rad_deg=0.3,
                    catalog_filename='panstarrs_' + RADecString + '.xml')
     PS1Catalog = readPanSTARRS('panstarrs_' + RADecString + '.xml',
-                               PSF_Kron=0.3)
+                               PSF_Kron=0.4)
   print('A Pan-STARRS catalog has been loaded with '
         + '{} entries.'.format(len(PS1Catalog)))
   #Match the PS1 sources to the SExtractor catalog. Only keep matched pairs.
@@ -192,21 +192,28 @@ def best(imageArray, repfactor, **kwargs):
     raise TypeError('Unexpected **kwargs: %r' % kwargs)
   print(__version__ if verbose else "")
   print(imageArray if verbose else "")
-  bestID, bestSExCat = findBestImage(imageArray, extno=extno)
-  print(bestID if verbose else "")
+  #bestID, bestSExCat = findBestImage(imageArray, extno=extno)
+  #print(bestID if verbose else "")
   catalogueArray = getAllCatalogues(imageArray, extno=extno)
+  nCatMembers = [len(cat['XWIN_IMAGE']) for cat in catalogueArray]
+  bestID = np.argmax(nCatMembers)
+  bestSExCat = catalogueArray[bestID]
+  (bestData, _, _, _, _, MJDm, _, NAXIS1, NAXIS2, _, _
+   ) = getDataHeader(imageArray[bestID] + '.fits', extno=extno)
+  print("The best image is {}".format(imageArray[bestID]))
+  bestSExCatTrimmed = trimCatalog(bestSExCat, bestData, dcut=5, mcut=55000,
+                                  snrcut=0, shapecut=5,  # basically no cuts
+                                  naxis1=NAXIS1, naxis2=NAXIS2)
+  catalogueArray[bestID] = bestSExCatTrimmed  # lazy workaround
   PS1SharedCat = PanSTARRSStuff(catalogueArray, bestID)
   print('{}'.format(len(PS1SharedCat)) +
         ' PS1 sources are visible in all images.')
-  bestData, _, _, _, _, MJDm, _, _, _, _, _ = getDataHeader(imageArray[bestID]
-                                                            + '.fits',
-                                                            extno=extno)
   timeNow = datetime.now().strftime('%Y-%m-%d/%H:%M:%S')
   if verbose:
     saveStarMag('PS1SharedCat.txt', PS1SharedCat,
                 timeNow, __version__, 'All images', extno=extno)
-  bestSharedPS1SExCat = PS1_vs_SEx(PS1SharedCat, bestSExCat, maxDist=2.5,
-                                   appendSEx=True)
+  bestSharedPS1SExCat = PS1_vs_SEx(PS1SharedCat, bestSExCat,
+                                   maxDist=2.5, appendSEx=True)
   if verbose:
     saveStarMag('bestSharedPS1SExCat.txt', bestSharedPS1SExCat,
                 timeNow, __version__, MJDm, extno=extno)

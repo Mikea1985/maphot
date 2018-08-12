@@ -24,6 +24,7 @@ from __future__ import print_function, division
 import sys
 from datetime import datetime
 import warnings
+import dill
 from six.moves import zip
 import numpy as np
 import mp_ephem
@@ -126,7 +127,8 @@ bestCatName = ('best.cat' if extno is None
                else 'best{0:02.0f}.cat'.format(extno))
 try:
   bestCat = best.unpickleCatalogue(bestCatName)
-  print('Success!')
+  print('Success! Unpickled the best catalogue.')
+  outfile.write('\nSuccess! Unpickled the best catalogue.')
 except IOError:
   print('Uh oh! Unpickling unsuccesful. Does ' + bestCatName + ' exist?')
   print('If not, run best.best([fitsList]).')
@@ -138,53 +140,62 @@ catalog_psf = PS1_vs_SEx(bestCat, fullSExCat, maxDist=1.0, appendSEx=True)
 
 # Restore PSF if exist, otherwise build it.
 try:
-  goodPSF = psf.modelPSF(restore=inputName + '_psf.fits')
-  fwhm = goodPSF.FWHM()
+  #goodPSF = psf.modelPSF(restore=inputName + '_psf.fits')
+  #fwhm = goodPSF.FWHM()
+  #print("fwhm = ", fwhm)
+  #outfile.write("\nfwhm = {}\n".format(fwhm))
+  goodStarFile = open(inputName + '_goodStars.pickle', 'rb')
+  (goodFits, goodMeds, goodSTDs, goodPSF, roundAperCorr
+   ) = dill.load(goodStarFile)
+  goodStarFile.close()
+  #goodPSF.fitted=False
   print("PSF restored from file.")
   outfile.write("\nPSF restored from file\n")
-#  goodPSF.fitted=False
-  print("fwhm = ", fwhm)
+  fwhm = goodPSF.FWHM()
+  print("fwhm = ", fwhm, ' restored')
   outfile.write("\nfwhm = {}\n".format(fwhm))
-  goodStars = np.genfromtxt(inputName + '_goodStars.txt', usecols=(0, 1))
 except IOError:
   print("Could not restore PSF (Normal unless previously saved)")
   print("Making new one.")
   outfile.write("\nDid not restore PSF from file\n")
   (goodFits, goodMeds, goodSTDs, goodPSF, fwhm
    ) = inspectStars(data, catalog_psf, repfact, verbose=True)
+  fwhm = goodPSF.FWHM()
+  print(" fwhm = ", fwhm)
   outfile.write("\ngoodFits={}".format(goodFits))
   outfile.write("\ngoodMeds={}".format(goodMeds))
   outfile.write("\ngoodSTDs={}".format(goodSTDs))
-  outfile.write("\n fwhm = {}\n".format(goodPSF))
+  outfile.write("\n goodPSF = {}\n".format(goodPSF))
   outfile.write("\n fwhm = {}\n".format(fwhm))
-  goodStars = goodFits[:, 4:6]
-  goodStarsFile = open(inputName + '_goodStars.txt', 'w')
-  for i in np.arange(len(goodStars[:, 0])):
-    goodStarsFile.write("{} {}\n".format(goodStars[i, 0], goodStars[i, 1]))
-  goodStarsFile.close()
-  print(goodFits)
+  goodPSF.line(rate, angle, EXPTIME / 3600., pixScale=pxscale,
+               useLookupTable=True)
+  goodPSF.computeRoundAperCorrFromPSF(psf.extent(0.7 * fwhm, 4 * fwhm, 100),
+                                      display=False,
+                                      displayAperture=False,
+                                      useLookupTable=True)
+  roundAperCorr = goodPSF.roundAperCorr(roundAperRad * fwhm)
+  goodPSF.computeLineAperCorrFromTSF(psf.extent(0.1 * fwhm, 4 * fwhm, 100),
+                                     l=(EXPTIME / 3600.) * rate / pxscale,
+                                     a=angle, display=False,
+                                     displayAperture=False)
+  goodPSF.psfStore(inputName + '_psf.fits')
+  fwhm = goodPSF.FWHM()
+  print("  fwhm = ", fwhm)
+  outfile.write("\nfwhm = {}\n".format(fwhm))
+  goodStarFile = open(inputName + '_goodStars.pickle', 'wb')
+  dill.dump([goodFits, goodMeds, goodSTDs, goodPSF, roundAperCorr],
+            goodStarFile, dill.HIGHEST_PROTOCOL)
+  goodStarFile.close()
 except UnboundLocalError:
   print("Data error occurred!")
   outfile.write("\nData error occured!\n")
   raise
 
-print(goodStars)
-#catalog_phot = extractGoodStarCatalogue(catalog_psf, goodStars[:, 0],
-#                                        goodStars[:, 1])
-catalog_phot = catalog_psf
+#print(goodStars)
+catalog_phot = extractGoodStarCatalogue(catalog_psf, goodFits[:, 4],
+                                        goodFits[:, 5])
+#catalog_phot = catalog_psf
 
-goodPSF.line(rate, angle, EXPTIME / 3600., pixScale=pxscale,
-             useLookupTable=True)
-goodPSF.computeRoundAperCorrFromPSF(psf.extent(0.7 * fwhm, 4 * fwhm, 100),
-                                    display=False,
-                                    displayAperture=False,
-                                    useLookupTable=True)
-roundAperCorr = goodPSF.roundAperCorr(roundAperRad * fwhm)
-goodPSF.computeLineAperCorrFromTSF(psf.extent(0.1 * fwhm, 4 * fwhm, 100),
-                                   l=(EXPTIME / 3600.) * rate / pxscale,
-                                   a=angle, display=False,
-                                   displayAperture=False)
-goodPSF.psfStore(inputName + '_psf.fits')
 
 # Do photometry for the trimmed catalog stars.
 # This will be used to find a set of non-variable stars, in order to
@@ -268,7 +279,7 @@ outfile.write("\nTNOPhot.sourceFlux={}".format(TNOPhot.sourceFlux))
 outfile.write("\nTNOPhot.snr={}".format(TNOPhot.snr))
 outfile.write("\nTNOPhot.bg={}".format(TNOPhot.bg))
 
-print("\nFINAL (non-calibrated) RESULT!")
+print("\nAlmost final (non-calibrated) results!")
 print("#{0:12} {1:13} {2:13} {3:13} {4:13}".format(
       '   x ', '    y ', ' magnitude ', '  dmagnitude ', ' magzero '))
 print("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
@@ -295,8 +306,10 @@ finalCat = PS1_to_CFHT(PS1PhotCat)
 # Calculate magnitude calibration factor
 magCalibArray = (finalCat[FILTER + 'MeanPSFMag_CFHT']
                  - finalCat[magKeyName])
-magCalibration = np.median(magCalibArray)
 dmagCalibration = np.std(magCalibArray)
+sigmaclip = [np.abs(magCalibArray) < 3 * dmagCalibration]
+magCalibration = np.median(magCalibArray[sigmaclip])
+dmagCalibration = np.std(magCalibArray[sigmaclip])
 
 # Correct the TNO magnitude and zero point
 finalTNOphotCFHT = (TNOPhot.magnitude - lineAperCorr + magCalibration,
@@ -304,6 +317,17 @@ finalTNOphotCFHT = (TNOPhot.magnitude - lineAperCorr + magCalibration,
                      + dmagCalibration ** 2) ** 0.5)
 zptGood = MAGZERO + magCalibration
 finalTNOphotPS1 = CFHT_to_PS1(finalTNOphotCFHT[0], finalTNOphotCFHT[1], FILTER)
+
+print("\nFINAL (calibrated) RESULT!")
+print("#{0:12} {1:13} {2:13} {3:13} {4:13}".format(
+      '   x ', '    y ', ' magnitude ', '  dmagnitude ', ' magzero '))
+print("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
+      xUse, yUse, finalTNOphotPS1[0], finalTNOphotPS1[1], zptGood))
+outfile.write("\nFINAL (calibrated) RESULT!")
+outfile.write("\n#{0:12} {1:13} {2:13} {3:13} {4:13}\n".format(
+              '   x ', '    y ', ' magnitude ', '  dmagnitude ', ' magzero '))
+outfile.write("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
+              xUse, yUse, finalTNOphotPS1[0], finalTNOphotPS1[1], zptGood))
 
 TNOCoords = WCS.all_pix2world(xUse, yUse, 1)
 #Save TNO magnitudes neatly.
@@ -313,7 +337,8 @@ saveTNOMag(inputFile, coordsfile, MJD, MJDm, TNOCoords, xUse, yUse,
            magCalibration, dmagCalibration, finalTNOphotCFHT, zptGood,
            finalTNOphotPS1, timeNow, np.array(TNOPhot.bgSamplingRegion),
            __version__, extno=extno)
-saveStarMag(inputFile, finalCat, timeNow, __version__, MJD, extno=extno)
+saveStarMag(inputFile, finalCat[sigmaclip], timeNow, __version__,
+            MJD, extno=extno)
 
 # You could stop here.
 # However, to confirm that things are working well,
@@ -322,8 +347,7 @@ saveStarMag(inputFile, finalCat, timeNow, __version__, MJD, extno=extno)
 #                 ('s' in centroidUsed) or ('S' in centroidUsed)):
 #  remove = True
 removeTSF(data, xUse, yUse, TNOPhot.bg, goodPSF, NAXIS1, NAXIS2, header,
-          inputName + '{0:02.0f}'.format(extno), outfile=outfile,
-          repfact=repfact, remove=remove)
+          inputName, outfile=outfile, repfact=repfact, remove=remove)
 
 #Run function to save photometry in MPC format
 pix2world(inputFile, EXPTIME, MJD, finalTNOphotPS1[0], xUse, yUse, FILTER,

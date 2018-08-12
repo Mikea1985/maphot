@@ -202,7 +202,7 @@ def writeSExParFiles(imageFileName, minArea, threshold, zpt, aperture,
                               minArea=minArea, threshold=threshold,
                               zpt=zpt, aperture=aperture,
                               kron_factor=kron_factor, min_radius=min_radius,
-                              catalogType='FITS_LDAC', saturate=110000)
+                              catalogType='FITS_LDAC', saturate=60000)
   scamp.makeParFiles.writeConv()
   scamp.makeParFiles.writeParam('def.param', numAps=1)
 
@@ -750,6 +750,11 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
   This fit is also used to remove the object from the image, later.
   fit takes time proportional to nWalkers*(2+nBurn+nStep).
   '''
+  if (x0 == xt) & (y0 == yt):  # if SExtractor not find TNO, run centroid
+    centroid = True
+    SExFoundIt = False
+  else:
+    SExFoundIt = True
   Data = (data[np.max([0, int(yt) - 200]):np.min([NAXIS2 - 1, int(yt) + 200]),
                np.max([0, int(xt) - 200]):np.min([NAXIS1 - 1, int(xt) + 200])]
           - bg)
@@ -770,7 +775,9 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
     normer = interval.ManualInterval(z1, z2)
     pyl.imshow(normer(Zoom), origin='lower')
     pyl.plot([zx + x0 - int(xt0)], [zy + y0 - int(yt0)], 'k*', ms=10)
-    pyl.plot([zx + xt0 - int(xt0)], [zy + yt0 - int(yt0)], 'w+', ms=10, mew=2)
+    if SExFoundIt:
+      pyl.plot([zx + xt0 - int(xt0)], [zy + yt0 - int(yt0)],
+               'w+', ms=10, mew=2)
     if centroid or remove:
       print("Should I be doing this?")
       xcent, ycent, fitPars, fitRange = runMCMCCentroid(goodPSF, Data, x0, y0,
@@ -784,27 +791,39 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
       pyl.plot([zx + xcent - int(xt0)],
                [zy + ycent - int(yt0)], 'gx', ms=10, mew=2)
       print("\n")
-      print("Estimated    (black)  x,y = ", x0, y0)
-      print("SExtractor   (white)  x,y = ", xt, yt)
       print("MCMCcentroid (green)  x,y = ", xcent, ycent)
+      if SExFoundIt:
+        print("SExtractor   (white)  x,y = ", xt, yt)
+      print("Estimated    (black)  x,y = ", x0, y0)
       pyl.show()
-      yn = input('Accept MCMC centroid (m or c), '
-                 + 'SExtractor centroid (S), or estimate (e)? ')
+      if SExFoundIt:
+        yn = input('Accept MCMC centroid (m or c), '
+                   + 'SExtractor centroid (S), or estimate (e)? ')
+      else:
+        yn = input('Accept MCMC centroid (M or c), '
+                   + 'SExtractor centroid (s), or estimate (e)? ')
       if ('e' in yn) or ('E' in yn):  # if press e/E use estimate
         xt, yt = x0, y0
         break
-      elif ('m' in yn) or ('M' in yn) or ('c' in yn) or ('C' in yn):  # cntroid
+      elif ('s' in yn) or ('S' in yn):
+        break
+      elif ('m' in yn) or ('M' in yn) or ('c' in yn) or ('C' in yn):
         xt, yt = xcent, ycent
         break
       else:
-        yn = 'S'  # else do nothing, use SExtractor co-ordinates.
+        if SExFoundIt:
+          yn = 'S'  # else do nothing, use SExtractor co-ordinates.
+        else:
+          yn = 'M'  # else do nothing, use MCMC co-ordinates.
+          xt, yt = xcent, ycent
         break
     else:  # if not previously centroided, check whether needed
       if (x0 == xt) & (y0 == yt):  # if SExtractor not find TNO, run centroid
         centroid = True
+        SExFoundIt = False
       else:  # else pick between estimate, SExtractor and recentroiding
-        print("Estimated    (black)  x,y = ", x0, y0)
         print("SExtractor   (white)  x,y = ", xt, yt)
+        print("Estimated    (black)  x,y = ", x0, y0)
         pyl.show()
         yn = input('Accept '
                    + 'SExtractor centroid (S), or estimate (e), '
@@ -825,7 +844,7 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
 
 
 def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
-              outfile=None, repfact=10, remove=True):
+              outfile=None, repfact=10, remove=True, verbose=False):
   '''Remove a TSF.
   If remove=False, will not remove, just saves postage-stamp around xt, yt.'''
   Data = (data[np.max([0, int(yt) - 200]):np.min([NAXIS2 - 1, int(yt) + 200]),
@@ -857,14 +876,15 @@ def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
     modelImage = goodPSF.plant(fitPars[0], fitPars[1], fitPars[2], Data,
                                addNoise=False, useLinePSF=True,
                                returnModel=True)
-    pyl.imshow(normer(goodPSF.lookupTable), origin='lower')
-    pyl.show()
-    #pyl.imshow(normer(modelImage), origin='lower')
-    #pyl.show()
-    #pyl.imshow(normer(Data), origin='lower')
-    #pyl.show()
-    #pyl.imshow(normer(removed), origin='lower')
-    #pyl.show()
+    if verbose:
+      pyl.imshow(normer(goodPSF.lookupTable), origin='lower')
+      pyl.show()
+      pyl.imshow(normer(modelImage), origin='lower')
+      pyl.show()
+      pyl.imshow(normer(Data), origin='lower')
+      pyl.show()
+      pyl.imshow(normer(removed), origin='lower')
+      pyl.show()
     hdu = pyf.PrimaryHDU(modelImage, header=header)
     list = pyf.HDUList([hdu])
     list.writeto(inputName + '_modelImage.fits', overwrite=True)
@@ -874,10 +894,11 @@ def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
   else:
     (z1, z2) = numdisplay.zscale.zscale(Data)
     normer = interval.ManualInterval(z1, z2)
-    pyl.imshow(normer(goodPSF.lookupTable), origin='lower')
-    pyl.show()
-    #pyl.imshow(normer(Data), origin='lower')
-    #pyl.show()
+    if verbose:
+      pyl.imshow(normer(goodPSF.lookupTable), origin='lower')
+      pyl.show()
+      pyl.imshow(normer(Data), origin='lower')
+      pyl.show()
   hdu = pyf.PrimaryHDU(goodPSF.lookupTable, header=header)
   list = pyf.HDUList([hdu])
   list.writeto(inputName + '_lookupTable.fits', overwrite=True)
