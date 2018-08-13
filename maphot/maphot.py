@@ -306,10 +306,11 @@ finalCat = PS1_to_CFHT(PS1PhotCat)
 # Calculate magnitude calibration factor
 magCalibArray = (finalCat[FILTER + 'MeanPSFMag_CFHT']
                  - finalCat[magKeyName])
-dmagCalibration = np.std(magCalibArray)
-sigmaclip = [np.abs(magCalibArray) < 3 * dmagCalibration]
-magCalibration = np.median(magCalibArray[sigmaclip])
-dmagCalibration = np.std(magCalibArray[sigmaclip])
+dmagCalibration = np.nanstd(magCalibArray)
+magCalibration = np.nanmedian(magCalibArray)
+sigmaclip = [np.abs(magCalibArray - magCalibration) < 3 * dmagCalibration]
+magCalibration = np.nanmedian(magCalibArray[sigmaclip])
+dmagCalibration = np.nanstd(magCalibArray[sigmaclip])
 
 # Correct the TNO magnitude and zero point
 finalTNOphotCFHT = (TNOPhot.magnitude - lineAperCorr + magCalibration,
