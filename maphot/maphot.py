@@ -33,13 +33,13 @@ from trippy import psf, pill
 import best
 from maphot_functions import (getArguments, getObservations, coordRateAngle,
                               getSExCatalog, predicted2catalog,
-                              saveTNOMag, saveStarMag,
+                              saveTNOMag, saveStarMag, saveTNOMag2,
                               getDataHeader, addPhotToCatalog, PS1_vs_SEx,
                               PS1_to_CFHT, CFHT_to_PS1, inspectStars,
                               chooseCentroid, removeTSF,
                               extractGoodStarCatalogue)
 from __version__ import __version__
-from pix2world import pix2world
+from pix2world import pix2MPC
 
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
@@ -332,6 +332,8 @@ outfile.write("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
 TNOCoords = WCS.all_pix2world(xUse, yUse, 1)
 #Save TNO magnitudes neatly.
 timeNow = datetime.now().strftime('%Y-%m-%d/%H:%M:%S')
+saveTNOMag2(inputFile, coordsfile, MJDm, TNOCoords, xUse, yUse,
+            FILTER, fwhm, finalTNOphotPS1, timeNow, __version__, extno=extno)
 saveTNOMag(inputFile, coordsfile, MJD, MJDm, TNOCoords, xUse, yUse,
            MAGZERO, FILTER, fwhm, bestap, TNOPhot,
            magCalibration, dmagCalibration, finalTNOphotCFHT, zptGood,
@@ -350,8 +352,7 @@ removeTSF(data, xUse, yUse, TNOPhot.bg, goodPSF, NAXIS1, NAXIS2, header,
           inputName, outfile=outfile, repfact=repfact, remove=remove)
 
 #Run function to save photometry in MPC format
-pix2world(WCS, EXPTIME, MJD, finalTNOphotPS1[0], xUse, yUse, FILTER,
-          extno)
+pix2MPC(WCS, EXPTIME, MJD, finalTNOphotPS1[0], xUse, yUse, FILTER, extno)
 
 print('Done with ' + inputFile + '!')
 outfile.close()

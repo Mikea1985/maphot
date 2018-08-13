@@ -425,7 +425,7 @@ def saveTNOMag(image_fn, mpc_fn, headerMJD, obsMJD, SExTNOCoord, x_tno, y_tno,
                 'ZptGood\tRunTime\t' +
                 'GoodMag_PS1\tdGoodMag_PS1\t' +
                 'bgXMin\tbgXMax\tbgYMin\tbgYMax\t' +
-                'gphot_version\n')
+                'maphot_version\n')
   TNOFile.write('{}\t{}\t'.format(image_fn, mpc_fn) +
                 '{}\t{}\t'.format(headerMJD, obsMJD) +
                 '{}\t{}\t'.format(SExTNOCoord[0], SExTNOCoord[1]) +
@@ -436,6 +436,36 @@ def saveTNOMag(image_fn, mpc_fn, headerMJD, obsMJD, SExTNOCoord, x_tno, y_tno,
                 '{}\t{}\t'.format(zptGood, timeNow) +
                 '{}\t{}\t'.format(finalTNOphotPS1[0], finalTNOphotPS1[1]) +
                 '{}\t{}\t{}\t{}\t'.format(*TNObgRegion) +
+                '{}\n'.format(version))
+  TNOFile.close()
+  return
+
+
+def saveTNOMag2(image_fn, mpc_fn, obsMJD, SExTNOCoord, x_tno, y_tno,
+                obsFILTER, FWHM, finalTNOphotPS1, timeNow, version,
+                extno=None):
+  '''Save the TNO magnitude and other information.'''
+  if extno is None:
+    print('Warning: Treating this as a single extension file.')
+    TNOFileName = 'TNOmags.txt'
+  else:
+    TNOFileName = 'TNOmags{0:02.0f}.txt'.format(extno)
+  TNOFile = open(TNOFileName, 'a+')
+  TNOFile.write('#Filename\tObject\tMJDm\t' +
+                'RA(deg)\tDec(deg)\t' +
+                'x_pix\ty_pix\t' +
+                'Filter\tFWHM\t' +
+                'GoodMag_PS1\tdGoodMag_PS1\t' +
+                'RunTime\t' +
+                'maphot_version\n')
+  TNOFile.write(image_fn.replace('.fits','') + '\t' +
+                mpc_fn.replace('.mpc', '').replace('../MPC/', '') + '\t' +
+                '{}\t'.format(obsMJD) +
+                '{}\t{}\t'.format(SExTNOCoord[0], SExTNOCoord[1]) +
+                '{}\t{}\t'.format(x_tno, y_tno) +
+                '{}\t{}\t'.format(obsFILTER, FWHM) +
+                '{}\t{}\t'.format(finalTNOphotPS1[0], finalTNOphotPS1[1]) +
+                '{}\t'.format(timeNow) +
                 '{}\n'.format(version))
   TNOFile.close()
   return
