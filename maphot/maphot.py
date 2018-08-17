@@ -306,8 +306,12 @@ finalCat = PS1_to_CFHT(PS1PhotCat)
 # Calculate magnitude calibration factor
 magCalibArray = (finalCat[FILTER + 'MeanPSFMag_CFHT']
                  - finalCat[magKeyName])
-dmagCalibration = np.nanstd(magCalibArray)
-magCalibration = np.nanmedian(magCalibArray)
+dmagCalibArray = (finalCat[FILTER + 'MeanPSFMagErr'] ** 2 +
+                  finalCat['d' + magKeyName] ** 2) ** 0.5
+magCalibration, sumOfWeights = np.average(magCalibArray,
+                                          weights=1. / dmagCalibArray ** 2,
+                                          returned=True)
+dmagCalibration = 1. / sumOfWeights ** 0.5
 sigmaclip = [np.abs(magCalibArray - magCalibration) < 3 * dmagCalibration]
 magCalibration = np.nanmedian(magCalibArray[sigmaclip])
 dmagCalibration = np.nanstd(magCalibArray[sigmaclip])
