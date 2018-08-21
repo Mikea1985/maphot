@@ -458,7 +458,7 @@ def saveTNOMag2(image_fn, mpc_fn, obsMJD, SExTNOCoord, x_tno, y_tno,
                 'GoodMag_PS1\tdGoodMag_PS1\t' +
                 'RunTime\t' +
                 'maphot_version\n')
-  TNOFile.write(image_fn.replace('.fits','') + '\t' +
+  TNOFile.write(image_fn.replace('.fits', '') + '\t' +
                 mpc_fn.replace('.mpc', '').replace('../MPC/', '') + '\t' +
                 '{}\t'.format(obsMJD) +
                 '{}\t{}\t'.format(SExTNOCoord[0], SExTNOCoord[1]) +
@@ -637,7 +637,7 @@ def inspectStars(data, catalogue, repfactor, **kwargs):
                                              catalogue['FLUX_AUTO'],
                                              catalogue['FLUXERR_AUTO'])
     (goodFits, goodMeds, goodSTDs
-     ) = starChooser(30, 100,  # (box size, min SNR)
+     ) = starChooser(30, 0,  # (box size, min SNR)
                      initAlpha=3., initBeta=3.,
                      repFact=repfactor,
                      includeCheesySaturationCut=False,
@@ -831,7 +831,7 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
                    + 'SExtractor centroid (S), or estimate (e)? ')
       else:
         yn = input('Accept MCMC centroid (M or c), '
-                   + 'SExtractor centroid (s), or estimate (e)? ')
+                   + 'or estimate (e)? ')
       if ('e' in yn) or ('E' in yn):  # if press e/E use estimate
         xt, yt = x0, y0
         break

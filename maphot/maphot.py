@@ -106,8 +106,9 @@ else:
 fullSExCat = getSExCatalog(inputFile, SEx_params, extno=extno)
 
 #Find the SourceExtractor source nearest to the predicted location.
-TNOSEx, centroidShift = predicted2catalog(fullSExCat, TNOpred)
-xSEx, ySEx = TNOSEx
+TNOSEx, cShift = predicted2catalog(fullSExCat, TNOpred)
+xSEx, ySEx = TNOSEx[:, 0]
+centroidShift = cShift[0]
 #If using the Source Extractor centroid is undesirable, set overrideSEx=True
 #Otherwise, the source nearest the predicted TNO location is used.
 if (centroidShift > 15) | overrideSEx:
