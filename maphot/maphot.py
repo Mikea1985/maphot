@@ -309,13 +309,21 @@ magCalibArray = (finalCat[FILTER + 'MeanPSFMag_CFHT']
                  - finalCat[magKeyName])
 dmagCalibArray = (finalCat[FILTER + 'MeanPSFMagErr'] ** 2 +
                   finalCat['d' + magKeyName] ** 2) ** 0.5
-magCalibration, sumOfWeights = np.average(magCalibArray,
-                                          weights=1. / dmagCalibArray ** 2,
-                                          returned=True)
-dmagCalibration = 1. / sumOfWeights ** 0.5
+magCalibration = np.nanmean(magCalibArray)
+dmagCalibration = np.std(magCalibArray)
+print([i for i in magCalibArray])
+print([i for i in dmagCalibArray])
+print(magCalibration)
+print(dmagCalibration)
 sigmaclip = [np.abs(magCalibArray - magCalibration) < 3 * dmagCalibration]
-magCalibration = np.nanmedian(magCalibArray[sigmaclip])
-dmagCalibration = np.nanstd(magCalibArray[sigmaclip])
+print(sigmaclip)
+(magCalibration,
+ sumOfWeights) = np.average(magCalibArray[sigmaclip],
+                            weights=1. / dmagCalibArray[sigmaclip] ** 2,
+                            returned=True)
+dmagCalibration = 1. / sumOfWeights ** 0.5
+print(magCalibration)
+print(dmagCalibration)
 
 # Correct the TNO magnitude and zero point
 finalTNOphotCFHT = (TNOPhot.magnitude - lineAperCorr + magCalibration,
