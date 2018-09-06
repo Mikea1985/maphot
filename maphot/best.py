@@ -201,7 +201,7 @@ def best(imageArray, repfactor, **kwargs):
   (bestData, _, _, _, _, MJDm, _, NAXIS1, NAXIS2, _, _
    ) = getDataHeader(imageArray[bestID] + '.fits', extno=extno)
   print("The best image is {}".format(imageArray[bestID]))
-  bestSExCatTrimmed = trimCatalog(bestSExCat, bestData, dcut=5, mcut=55000,
+  bestSExCatTrimmed = trimCatalog(bestSExCat, bestData, dcut=30, mcut=55000,
                                   snrcut=0, shapecut=5,  # basically no cuts
                                   naxis1=NAXIS1, naxis2=NAXIS2)
   catalogueArray[bestID] = bestSExCatTrimmed  # lazy workaround

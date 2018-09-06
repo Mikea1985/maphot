@@ -36,8 +36,8 @@ from maphot_functions import (getArguments, getObservations, coordRateAngle,
                               saveTNOMag, saveStarMag, saveTNOMag2,
                               getDataHeader, addPhotToCatalog, PS1_vs_SEx,
                               PS1_to_CFHT, CFHT_to_PS1, inspectStars,
-                              chooseCentroid, removeTSF,
-                              extractGoodStarCatalogue)
+                              chooseCentroid, removeTSF,PS1_to_LBT,
+                              extractGoodStarCatalogue,LBT_not_to)
 from __version__ import __version__
 from pix2world import pix2MPC
 
@@ -303,7 +303,7 @@ PS1PhotCat = addPhotToCatalog(catalog_phot['XWIN_IMAGE'],
                                'TrippySNR': np.array(SNRStars),
                                'TrippyBG': np.array(bgStars)})
 # Convert star catalog's PS1 magnitudes to CFHT magnitudes
-finalCat = PS1_to_CFHT(PS1PhotCat)
+finalCat = PS1_to_LBT(PS1PhotCat)
 # Calculate magnitude calibration factor
 magCalibArray = (finalCat[FILTER + 'MeanPSFMag_CFHT']
                  - finalCat[magKeyName])
@@ -330,7 +330,8 @@ finalTNOphotCFHT = (TNOPhot.magnitude - lineAperCorr + magCalibration,
                     (TNOPhot.dmagnitude ** 2
                      + dmagCalibration ** 2) ** 0.5)
 zptGood = MAGZERO + magCalibration
-finalTNOphotPS1 = CFHT_to_PS1(finalTNOphotCFHT[0], finalTNOphotCFHT[1], FILTER)
+#finalTNOphotPS1 = CFHT_to_PS1(finalTNOphotCFHT[0], finalTNOphotCFHT[1], FILTER)
+finalTNOphotPS1 = LBT_not_to(finalTNOphotCFHT[0], finalTNOphotCFHT[1], FILTER)
 
 print("\nFINAL (calibrated) RESULT!")
 print("#{0:12} {1:13} {2:13} {3:13} {4:13}".format(

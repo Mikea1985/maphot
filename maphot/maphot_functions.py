@@ -509,6 +509,28 @@ def PS1_to_Gemini(catalog):
   GeminiCat.add_columns((PS1rGemini, PS1gGemini))
   return GeminiCat
 
+def PS1_to_LBT(catalog):
+  '''Transform the PS1 magnitudes of catalog stars to LBT magnitudes,
+  using the filter transforms from LBT website.'''
+  # note this rband is in the blue camera.
+  PS1rGemini = Column(catalog['rMeanPSFMag'] + 0.016 *
+                      (catalog['gMeanPSFMag'] - catalog['rMeanPSFMag']),
+                      name='rMeanPSFMag_CFHT',
+                      description=catalog['rMeanPSFMag'].description +
+                      ' transformed to telescope filter')
+  PS1gGemini = Column(catalog['gMeanPSFMag'] + 0.086 *
+                      (catalog['gMeanPSFMag'] - catalog['rMeanPSFMag']),
+                      name='gMeanPSFMag_CFHT',
+                      description=catalog['gMeanPSFMag'].description +
+                      ' transformed to telescope filter')
+  PS1zGemini = Column(catalog['zMeanPSFMag'] + 0.020 *
+                      (catalog['iMeanPSFMag'] - catalog['zMeanPSFMag']),
+                      name='zMeanPSFMag_CFHT',
+                      description=catalog['zMeanPSFMag'].description +
+                      ' transformed to telescope filter')
+  GeminiCat = catalog.copy()
+  GeminiCat.add_columns((PS1rGemini, PS1gGemini,PS1zGemini))
+  return GeminiCat
 
 def PS1_to_CFHT(catalog, filters='griz'):
   '''Transform the PS1 magnitudes of catalog stars to CFHT magnitudes,
@@ -562,6 +584,11 @@ def CFHT_to_PS1(magnitude, mag_uncertainty, filter_name='r'):
   return PS1mag, PS1mag_uncertainty
 
 
+def LBT_not_to(magnitude, mag_uncertainty, filter_name='r'):
+  '''don't do this here, it depends on color which we're measuring.'''
+  return magnitude, mag_uncertainty
+
+
 def addPhotToCatalog(X, Y, catTable, photDict):
   '''Match good stars from starChooser in a SExtractor catalog (astropy table).
   Trims the catalog and adds the columns for our photometry.
@@ -591,24 +618,28 @@ def getDataHeader(inputFile, extno=None):
     else:
       data = han[extno].data
       header = han[extno].header
+      header0 = han[0].header
     EXPTIME = header['EXPTIME']
     try:
-      MAGZERO = header['MAGZERO']  # Subaru Hyper-Suprime
+      MAGZERO = header['MAGZERO']  # Subaru Hyper-Suprime, LBT
     except KeyError:
       try:
         MAGZERO = header['PHOT_C']   # CFHT MegaCam
       except KeyError:
-        MAGZERO = 26.0
+        MAGZERO = 27.0
     try:
       MJD = header['MJD']  # Subaru
     except:
       try:
         MJD = header['MJDATE']  # CFHT
       except:
-        MJD = header['MJD-OBS']  # Gemini/CFHT
+        try:
+          MJD = header['MJD-OBS']  # Gemini/CFHT
+        except:
+          MJD = header0['MJD_OBS']  # LBT
     MJDmid = MJD + EXPTIME / 172800.0
     try:
-      GAIN = header['GAINEFF']  # Subaru
+      GAIN = header['GAINEFF']  # Subaru/LBT
     except:
       GAIN = header['GAIN']  # CFHT
     NAXIS1 = header['NAXIS1'] if header['NAXIS1'] > 128 else header['ZNAXIS1']
@@ -616,7 +647,10 @@ def getDataHeader(inputFile, extno=None):
     try:
       FILTER = header['FILTER2'][0]  # Gemini
     except:
-      FILTER = header['FILTER'][0]  # CFHT/Subaru/LBT
+      try:
+        FILTER = header['FILTER'][0]  # CFHT/Subaru
+      except:
+        FILTER = header0['FILTER'][0]  # LBT
   WCS = wcs.WCS(header)
   return(data, header, EXPTIME, MAGZERO, MJD, MJDmid,
          GAIN, NAXIS1, NAXIS2, WCS, FILTER)
