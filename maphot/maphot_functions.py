@@ -261,17 +261,16 @@ def runMCMCCentroid(centPSF, centData, centxt, centyt, centm,
   """
   print("MCMC-fitting TSF to the moving object")
   centfitter = MCMCfit.MCMCfitter(centPSF, centData)
-  centfitter.fitWithModelPSF(centdtransx + centxt - int(centxt),
-                             centdtransy + centyt - int(centyt),
+  centfitter.fitWithModelPSF(centdtransx + centxt,
+                             centdtransy + centyt,
                              m_in=centm / repfact ** 2.,
-                             fitWidth=10, nWalkers=10,
-                             nBurn=20, nStep=20, bg=centbg, useLinePSF=True,
+                             fitWidth=10, nWalkers=20,
+                             nBurn=20, nStep=30, bg=centbg, useLinePSF=True,
                              verbose=True, useErrorMap=False)
   (centfitPars, centfitRange) = centfitter.fitResults(0.67)
 # Reverse the above coordinate transformation:
-  xcentroid, ycentroid = centfitPars[0:2] \
-                         - [centdtransx, centdtransy] \
-                         + [int(centxt), int(centyt)]  # noqa
+  xcentroid = centfitPars[0] - centdtransx
+  ycentroid = centfitPars[1] - centdtransy
   return xcentroid, ycentroid, centfitPars, centfitRange
 
 
@@ -814,6 +813,7 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
   This fit is also used to remove the object from the image, later.
   fit takes time proportional to nWalkers*(2+nBurn+nStep).
   '''
+  fitPars = None
   if (x0 == xt) & (y0 == yt):  # if SExtractor not find TNO, run centroid
     centroid = True
     SExFoundIt = False
@@ -822,8 +822,8 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
   Data = (data[np.max([0, int(yt) - 200]):np.min([NAXIS2 - 1, int(yt) + 200]),
                np.max([0, int(xt) - 200]):np.min([NAXIS1 - 1, int(xt) + 200])]
           - bg)
-  dtransy, dtransx = (int(yt) - np.max([0, int(yt) - 200]) - 1,
-                      int(xt) - np.max([0, int(xt) - 200]) - 1)
+  dtransy, dtransx = (- np.max([0, int(yt) - 200]) - 1,
+                      - np.max([0, int(xt) - 200]) - 1)
   Zoom = (data[np.max([0, int(yt) - 15]):np.min([NAXIS2 - 1, int(yt) + 15]),
                np.max([0, int(xt) - 15]):np.min([NAXIS1 - 1, int(xt) + 15])]
           - bg)
@@ -845,7 +845,7 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
     if centroid or remove:
       print("Should I be doing this?")
       xcent, ycent, fitPars, fitRange = runMCMCCentroid(goodPSF, Data, x0, y0,
-                                                        m_obj, bg,
+                                                        m_obj, 0,
                                                         dtransx, dtransy,
                                                         repfact)
       print("\nfitPars = ", fitPars, "\nfitRange = ", fitRange, "\n")
@@ -904,28 +904,30 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
   print("Coordinates chosen from this centroid: {}".format(yn))
   if outfile is not None:
     outfile.write("\nCoordinates chosen from this centroid: {}".format(yn))
-  return xt, yt, yn
+  return xt, yt, yn, fitPars
 
 
 def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
-              outfile=None, repfact=10, remove=True, verbose=False):
+              outfile=None, repfact=10, remove=True, verbose=False,
+              fitPars=None):
   '''Remove a TSF.
   If remove=False, will not remove, just saves postage-stamp around xt, yt.'''
   Data = (data[np.max([0, int(yt) - 200]):np.min([NAXIS2 - 1, int(yt) + 200]),
                np.max([0, int(xt) - 200]):np.min([NAXIS1 - 1, int(xt) + 200])]
           - bg)
-  dtransy = int(yt) - np.max([0, int(yt) - 200]) - 1
-  dtransx = int(xt) - np.max([0, int(xt) - 200]) - 1
+  dtransy = - np.max([0, int(yt) - 200]) - 1
+  dtransx = - np.max([0, int(xt) - 200]) - 1
   m_obj = np.max(data[np.max([0, int(yt) - 5]):
                       np.min([NAXIS2 - 1, int(yt) + 5]),
                       np.max([0, int(xt) - 5]):
                       np.min([NAXIS1 - 1, int(xt) + 5])])
-  if remove:
+  if (fitPars is None) or remove:
     print("Should I be doing this?")
     fitter = MCMCfit.MCMCfitter(goodPSF, Data)
-    fitter.fitWithModelPSF(dtransx + xt - int(xt), dtransy + yt - int(yt),
-                           m_in=m_obj / repfact ** 2., fitWidth=2, nWalkers=10,
-                           nBurn=10, nStep=10, bg=bg, useLinePSF=True,
+    fitter.fitWithModelPSF(dtransx + xt, dtransy + yt,
+                           m_in=m_obj / repfact ** 2.,
+                           fitWidth=10, nWalkers=20,
+                           nBurn=20, nStep=20, bg=0, useLinePSF=True,
                            verbose=True, useErrorMap=False)
     (fitPars, fitRange) = fitter.fitResults(0.67)
     print("\nfitPars = ", fitPars, "\n")
@@ -933,6 +935,7 @@ def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
     if outfile is not None:
       outfile.write("\nfitPars={}".format(fitPars))
       outfile.write("\nfitRange={}".format(fitRange))
+  if fitPars is not None:
     removed = goodPSF.remove(fitPars[0], fitPars[1], fitPars[2],
                              Data, useLinePSF=True)
     (z1, z2) = numdisplay.zscale.zscale(removed)
