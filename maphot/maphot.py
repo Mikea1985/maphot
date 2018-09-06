@@ -230,7 +230,7 @@ for xcat, ycat in np.array(list(zip(catalog_phot['XWIN_IMAGE'],
   SNRStars.append(starPhot.snr)
   bgStars.append(starPhot.bg)
 
-(xUse, yUse, centroidUsed
+(xUse, yUse, centroidUsed, fitPars
  ) = chooseCentroid(data, xUse, yUse, xPred, yPred, np.median(bgStars),
                     goodPSF, NAXIS1, NAXIS2, outfile=outfile, repfact=repfact,
                     centroid=centroid, remove=remove)
@@ -311,19 +311,19 @@ dmagCalibArray = (finalCat[FILTER + 'MeanPSFMagErr'] ** 2 +
                   finalCat['d' + magKeyName] ** 2) ** 0.5
 magCalibration = np.nanmean(magCalibArray)
 dmagCalibration = np.std(magCalibArray)
-print([i for i in magCalibArray])
-print([i for i in dmagCalibArray])
-print(magCalibration)
-print(dmagCalibration)
+#print([i for i in magCalibArray])
+#print([i for i in dmagCalibArray])
+#print(magCalibration)
+#print(dmagCalibration)
 sigmaclip = [np.abs(magCalibArray - magCalibration) < 3 * dmagCalibration]
-print(sigmaclip)
+#print(sigmaclip)
 (magCalibration,
  sumOfWeights) = np.average(magCalibArray[sigmaclip],
                             weights=1. / dmagCalibArray[sigmaclip] ** 2,
                             returned=True)
 dmagCalibration = 1. / sumOfWeights ** 0.5
-print(magCalibration)
-print(dmagCalibration)
+#print(magCalibration)
+#print(dmagCalibration)
 
 # Correct the TNO magnitude and zero point
 finalTNOphotCFHT = (TNOPhot.magnitude - lineAperCorr + magCalibration,
@@ -363,7 +363,8 @@ saveStarMag(inputFile, finalCat[sigmaclip], timeNow, __version__,
 #                 ('s' in centroidUsed) or ('S' in centroidUsed)):
 #  remove = True
 removeTSF(data, xUse, yUse, TNOPhot.bg, goodPSF, NAXIS1, NAXIS2, header,
-          inputName, outfile=outfile, repfact=repfact, remove=remove)
+          inputName, outfile=outfile, repfact=repfact, remove=remove,
+          fitPars=fitPars)
 
 #Run function to save photometry in MPC format
 pix2MPC(WCS, EXPTIME, MJD, finalTNOphotPS1[0], xUse, yUse, FILTER, extno)
