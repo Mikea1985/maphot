@@ -770,7 +770,8 @@ def findSharedPS1Catalogue(catalogueArray, **kwargs):
 
 
 def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
-                   repfact=10, outfile=None, centroid=False, remove=False):
+                   repfact=10, outfile=None, centroid=False, remove=False,
+                   filename=None):
   ''' Choose between SExtractor position and predicted position.
   If desirable, use MCMC to fit the TSF to the object, thus centroiding on it.
   This is often NOT better than the SExtractor location, especially when the
@@ -821,10 +822,13 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
       pyl.plot([zx + xcent - int(xt0)],
                [zy + ycent - int(yt0)], 'gx', ms=10, mew=2)
       print("\n")
+      print('These are your centroiding options in ' + filename
+            if filename is not None else '')
       print("MCMCcentroid (green)  x,y = ", xcent, ycent)
       if SExFoundIt:
         print("SExtractor   (white)  x,y = ", xt, yt)
       print("Estimated    (black)  x,y = ", x0, y0)
+      pyl.title(filename if filename is not None else '')
       pyl.show()
       if SExFoundIt:
         yn = input('Accept MCMC centroid (m or c), '
@@ -852,8 +856,11 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
         centroid = True
         SExFoundIt = False
       else:  # else pick between estimate, SExtractor and recentroiding
+        print('These are your centroiding options in ' + filename
+              if filename is not None else '')
         print("SExtractor   (white)  x,y = ", xt, yt)
         print("Estimated    (black)  x,y = ", x0, y0)
+        pyl.title(filename if filename is not None else '')
         pyl.show()
         yn = input('Accept '
                    + 'SExtractor centroid (S), or estimate (e), '

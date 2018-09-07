@@ -233,7 +233,7 @@ for xcat, ycat in np.array(list(zip(catalog_phot['XWIN_IMAGE'],
 (xUse, yUse, centroidUsed, fitPars
  ) = chooseCentroid(data, xUse, yUse, xPred, yPred, np.median(bgStars),
                     goodPSF, NAXIS1, NAXIS2, outfile=outfile, repfact=repfact,
-                    centroid=centroid, remove=remove)
+                    centroid=centroid, remove=remove, filename=inputFile)
 
 print('\nPhotometry of moving object')
 outfile.write("\nPhotometry of moving object\n")
