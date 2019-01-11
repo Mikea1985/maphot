@@ -198,7 +198,7 @@ def best(imageArray, repfactor, **kwargs):
   nCatMembers = [len(cat['XWIN_IMAGE']) for cat in catalogueArray]
   bestID = np.argmax(nCatMembers)
   bestSExCat = catalogueArray[bestID]
-  (bestData, _, _, _, _, MJDm, _, NAXIS1, NAXIS2, _, _
+  (bestData, _, _, _, _, MJDm, _, NAXIS1, NAXIS2, _, _,INS
    ) = getDataHeader(imageArray[bestID] + '.fits', extno=extno)
   print("The best image is {}".format(imageArray[bestID]))
   bestSExCatTrimmed = trimCatalog(bestSExCat, bestData, dcut=30, mcut=55000,

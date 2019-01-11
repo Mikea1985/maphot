@@ -35,7 +35,8 @@ from astropy.io.votable import parse_single_table
 from astropy.table import Column, Table
 from astropy import wcs
 from trippy import scamp, MCMCfit, psf, psfStarChooser
-from stsci import numdisplay  # pylint: disable=import-error
+#from stsci import numdisplay  # pylint: disable=import-error
+import zscale
 from __version__ import __version__
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
@@ -266,7 +267,7 @@ def runMCMCCentroid(centPSF, centData, centxt, centyt, centm,
                              m_in=centm / repfact ** 2.,
                              fitWidth=10, nWalkers=20,
                              nBurn=20, nStep=30, bg=centbg, useLinePSF=True,
-                             verbose=True, useErrorMap=False)
+                             verbose=False, useErrorMap=False)
   (centfitPars, centfitRange) = centfitter.fitResults(0.67)
 # Reverse the above coordinate transformation:
   xcentroid = centfitPars[0] - centdtransx
@@ -278,26 +279,28 @@ def getArguments(sysargv):
   """Get arguments given when this is called from a command line"""
   useage = ('maphot -c <MPCfile> -f <imagefile> -e <extension>'
             + ' -i <ignoreWarnings> [-v <verbose>  -. <centroid> '
-            + '-o <overrideSEx> -r <remove> -a <aprad> -s <sexparfile>]')
+            + '-o <overrideSEx> -r <remove> -a <aprad> -s <sexparfile>'
+            + '-t <tnotrack>]')
   AinputFile = 'a100.fits'  # Change with '-f <filename>' flag
   Acoordsfile = 'coords.in'  # Change with '-c <coordsfile>' flag
   Averbose = False  # Change with '-v True' or '--verbose True'
   Acentroid = False  # Change with '-. False' or  --centroid False'
   AoverrideSEx = False  # Change with '-o True' or '--override True'
   Aremove = False  # Change with '-r False' or '--remove False'
-  Aaprad, AroundAperRad = 0.7, 1.4  # Negative Aaprad = find optimal
+  tnotrack=False # true tracks TNO
+  Aaprad, AroundAperRad = 0.7, 0.7  # Negative Aaprad = find optimal
   Arepfact, Apxscale, = 10, 1.0
   Asexparfile, Aextno = None, None
   AignoreWarnings = False
   try:
-    options, dummy = getopt.getopt(sysargv[1:], "f:c:v:.:o:r:a:h:s:e:i:",
+    options, dummy = getopt.getopt(sysargv[1:], "f:c:v:.:o:r:a:h:s:e:i:t:",
                                    ["imagefile=", "MPCfile=", "verbose=",
                                     "centroid=", "overrideSEx=",
                                     "remove=", "aprad=", "sexparfile=",
-                                    "extension=", "ignoreWarnings="])
+                                    "extension=", "ignoreWarnings=","tracktno="])
     for opt, arg in options:
       if (opt in ("-v", "-verbose", "-.", "--centroid", "-o", "--overrideSEx",
-                  "-r", "--remove", "-i", "--ignoreWarnings")):
+                  "-r", "--remove","-t","--tracktno", "-i", "--ignoreWarnings")):
         if arg == '0' or arg == 'False':
           arg = False
         elif arg == '1' or arg == 'True':
@@ -328,6 +331,8 @@ def getArguments(sysargv):
         Aextno = int(arg)
       elif opt in ('-i', '--ignoreWarnings'):
         AignoreWarnings = arg
+      elif opt in ('-t', '--tracktno'):
+        tnotrack = arg
   except TypeError as error:
     print(error)
     sys.exit()
@@ -335,8 +340,8 @@ def getArguments(sysargv):
     print(" Input ERROR! \n", useage)
     sys.exit(2)
   return (AinputFile, Acoordsfile, Averbose, Acentroid,
-          AoverrideSEx, Aremove, Aaprad, Arepfact, Apxscale, AroundAperRad,
-          Asexparfile, Aextno, AignoreWarnings)
+          AoverrideSEx, Aremove, Aaprad, tnotrack, Arepfact, Apxscale, 
+          Aaprad,Asexparfile, Aextno, AignoreWarnings)
 
 
 def findTNO(xzero, yzero, fullcat, outfile):
@@ -618,7 +623,10 @@ def getDataHeader(inputFile, extno=None):
       data = han[extno].data
       header = han[extno].header
       header0 = han[0].header
-    EXPTIME = header['EXPTIME']
+    try:
+      EXPTIME = header['EXPTIME']
+    except KeyError:
+      EXPTIME = header0['EXPTIME']
     try:
       MAGZERO = header['MAGZERO']  # Subaru Hyper-Suprime, LBT
     except KeyError:
@@ -647,12 +655,16 @@ def getDataHeader(inputFile, extno=None):
       FILTER = header['FILTER2'][0]  # Gemini
     except:
       try:
-        FILTER = header['FILTER'][0]  # CFHT/Subaru
+        FILTER =  header0['FILTER2']  # Gemini
       except:
-        FILTER = header0['FILTER'][0]  # LBT
+        try:
+          FILTER = header['FILTER'][0]  # CFHT/Subaru
+        except:
+          FILTER = header0['FILTER'][0]  # LBT
   WCS = wcs.WCS(header)
+  INST = header0['INSTRUME'] #Gemini
   return(data, header, EXPTIME, MAGZERO, MJD, MJDmid,
-         GAIN, NAXIS1, NAXIS2, WCS, FILTER)
+         GAIN, NAXIS1, NAXIS2, WCS, FILTER,INST)
 
 
 def inspectStars(data, catalogue, repfactor, **kwargs):
@@ -836,7 +848,8 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
                       np.min([NAXIS1 - 1, int(xt) + 5])])
   xt0, yt0 = xt, yt
   while True:  # Breaks once a centroid has been selected.
-    (z1, z2) = numdisplay.zscale.zscale(Zoom)
+    #(z1, z2) = numdisplay.zscale.zscale(Zoom)
+    (z1, z2) = zscale.zscale(Zoom)
     normer = interval.ManualInterval(z1, z2)
     pyl.imshow(normer(Zoom), origin='lower')
     pyl.plot([zx + x0 - int(xt0)], [zy + y0 - int(yt0)], 'k*', ms=10)
@@ -854,7 +867,7 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
         outfile.write("\nfitPars={}".format(fitPars) +
                       "\nfitRange={}".format(fitRange))
       pyl.plot([zx + xcent - int(xt0)],
-               [zy + ycent - int(yt0)], 'gx', ms=10, mew=2)
+               [zy + ycent - int(yt0)], 'rx', ms=10, mew=2)
       print("\n")
       print('These are your centroiding options in ' + filename
             if filename is not None else '')
@@ -935,7 +948,7 @@ def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
                            m_in=m_obj / repfact ** 2.,
                            fitWidth=10, nWalkers=20,
                            nBurn=20, nStep=20, bg=0, useLinePSF=True,
-                           verbose=True, useErrorMap=False)
+                           verbose=False, useErrorMap=False)
     (fitPars, fitRange) = fitter.fitResults(0.67)
     print("\nfitPars = ", fitPars, "\n")
     print("\nfitRange = ", fitRange, "\n")
@@ -945,7 +958,8 @@ def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
   if fitPars is not None:
     removed = goodPSF.remove(fitPars[0], fitPars[1], fitPars[2],
                              Data, useLinePSF=True)
-    (z1, z2) = numdisplay.zscale.zscale(removed)
+    #(z1, z2) = numdisplay.zscale.zscale(removed)
+    (z1, z2) = zscale.zscale(removed)
     normer = interval.ManualInterval(z1, z2)
     modelImage = goodPSF.plant(fitPars[0], fitPars[1], fitPars[2], Data,
                                addNoise=False, useLinePSF=True,
@@ -966,7 +980,7 @@ def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
     list = pyf.HDUList([hdu])
     list.writeto(inputName + '_removed.fits', overwrite=True)
   else:
-    (z1, z2) = numdisplay.zscale.zscale(Data)
+    (z1, z2) = zscale.zscale(Data)
     normer = interval.ManualInterval(z1, z2)
     if verbose:
       pyl.imshow(normer(goodPSF.lookupTable), origin='lower')
