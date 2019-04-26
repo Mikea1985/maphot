@@ -2,7 +2,8 @@
 """maphot is a wrapper for easily running trippy on a bunch of images
 of a single object on a single night.
 Usage: (-h gives this line as well)
-maphot.py -c <coofile> -f <fitsfile> -v False -. True -o False -r True -a 07 -t False
+maphot.py -c <coofile> -f <fitsfile> -v False -. True -o False -r True
+          -a 07 -t False -e 0
 Defaults are:
 inputFile = 'a100.fits'  # Change with '-f <filename>' flag
 coofile = 'coords.in'  # Change with '-c <coofile>' flag
@@ -11,6 +12,7 @@ centroid = True  # Change with '-. False' or  --centroid False'
 overrideSEx = False  # Change with '-o True' or '--override True'
 remove = True  # Change with '-r False' or '--remove False'
 aprad = 0.7  # Change with '-a 1.5' or '--aprad 1.5'
+ext = 0  # Change with '-e 0' or '--ext 0'
 tnotrack = False  # Change with '-t True'
 sexparfile = 'sex.pars'  # Change with '-s filename' or '--sexparfile filename'
 coordsfile is a file that contains:
@@ -36,9 +38,9 @@ from maphot_functions import (getArguments, getObservations, coordRateAngle,
                               getSExCatalog, predicted2catalog,
                               saveTNOMag, saveStarMag, saveTNOMag2,
                               getDataHeader, addPhotToCatalog, PS1_vs_SEx,
-                              PS1_to_CFHT,PS1_to_Gemini, CFHT_to_PS1, inspectStars,
-                              chooseCentroid, removeTSF,PS1_to_LBT,
-                              extractGoodStarCatalogue,LBT_not_to)
+                              PS1_to_Gemini,  # PS1_to_CFHT, CFHT_to_PS1,
+                              inspectStars, chooseCentroid, removeTSF,
+                              PS1_to_LBT, extractGoodStarCatalogue, LBT_not_to)
 from __version__ import __version__
 from pix2world import pix2MPC
 
@@ -50,15 +52,15 @@ print("You are using maphot version: ", __version__)
 
 useage = 'maphot -c <coordsfile> -f <fitsfile> -v False '\
          + '-. False -o False -r False -a 0.7 -t False'
-(inputFile, coordsfile, verbose, centroid, overrideSEx, remove,
- aprad, tnotrack, repfact, pxscale, roundAperRad, SExParFile, extno, ignoreWarnings
+(inputFile, coordsfile, verbose, centroid, overrideSEx, remove, aprad,
+ tnotrack, repfact, pxscale, roundAperRad, SExParFile, extno, ignoreWarnings
  ) = getArguments(sys.argv)
 #Ignore all Python warnings.
 #This is generally a terrible idea, and should be turned off for de-bugging.
 if ignoreWarnings:
   warnings.filterwarnings("ignore")
 
-roundAperRad=aprad
+roundAperRad = aprad
 
 print("ifile =", inputFile, ", coords =", coordsfile, ", verbose =", verbose,
       ", centroid =", centroid, ", overrideSEx =", overrideSEx,
@@ -173,7 +175,7 @@ except IOError:
   outfile.write("\n fwhm = {}\n".format(fwhm))
   goodPSF.line(rate, angle, EXPTIME / 3600., pixScale=pxscale,
                useLookupTable=True)
-  goodPSF.computeRoundAperCorrFromPSF(psf.extent(0.7 * fwhm, 4 * fwhm, 100),
+  goodPSF.computeRoundAperCorrFromPSF(psf.extent(0.1 * fwhm, 4 * fwhm, 100),
                                       display=False,
                                       displayAperture=False,
                                       useLookupTable=True)
@@ -201,16 +203,16 @@ catalog_phot = extractGoodStarCatalogue(catalog_psf, goodFits[:, 4],
 #catalog_phot = catalog_psf
 
 # photometry parameters based on sidereal/non-sidereal tracking
-lstar=0.0
-astar=0.0
-ltno=(EXPTIME / 3600.)* rate / pxscale
-atno=angle
-if tnotrack==True:
-  ltno=0.0
-  atno=0.0
-  lstar=(EXPTIME / 3600.)* rate / pxscale
-  astar=angle
-AperRadstar=aprad
+lstar = 0.0
+astar = 0.0
+ltno = (EXPTIME / 3600.) * rate / pxscale
+atno = angle
+if tnotrack:
+  ltno = 0.0
+  atno = 0.0
+  lstar = (EXPTIME / 3600.) * rate / pxscale
+  astar = angle
+AperRadstar = aprad
 #### FIX THIS
 # it calls for aperradstar below before it is set.
 
@@ -276,20 +278,20 @@ lineAperCorr = goodPSF.lineAperCorr(lineAperRad * fwhm)
 print("lineAperCorr, roundAperCorr = ", lineAperCorr, roundAperCorr, "\n")
 outfile.write("\nlineAperCorr,roundAperCorr={},{}".format(lineAperCorr,
                                                           roundAperCorr))
-AperCorrStar=roundAperCorr
-AperCorrTNO=lineAperCorr
-AperRadStar=roundAperRad
-AperRadTNO=lineAperRad
+AperCorrStar = roundAperCorr
+AperCorrTNO = lineAperCorr
+AperRadStar = roundAperRad
+AperRadTNO = lineAperRad
 
-if tnotrack==True:
-  AperCorrStar=lineAperCorr
-  AperCorrTNO=roundAperCorr
-  AperRadStar=lineAperRad
-  AperRadTNO=roundAperRad
+if tnotrack:
+  AperCorrStar = lineAperCorr
+  AperCorrTNO = roundAperCorr
+  AperRadStar = lineAperRad
+  AperRadTNO = roundAperRad
 
 
 TNOPhot(xUse, yUse, radius=fwhm * AperRadTNO,
-        l=ltno,a=atno, skyRadius=4 * fwhm, width=6 * fwhm,
+        l=ltno, a=atno, skyRadius=4 * fwhm, width=6 * fwhm,
         #zpt=26.0, exptime=EXPTIME, enableBGSelection=True, display=True,
         zpt=MAGZERO, exptime=EXPTIME, enableBGSelection=True, display=True,
         backupMode="smart", trimBGHighPix=3., zscale=False)
@@ -331,28 +333,28 @@ PS1PhotCat = addPhotToCatalog(catalog_phot['XWIN_IMAGE'],
                                'TrippySNR': np.array(SNRStars),
                                'TrippyBG': np.array(bgStars)})
 # Convert star catalog's PS1 magnitudes to CFHT magnitudes
-teles='LBT'
-if INST=='GMOS-N':
-  teles='Gemini'
+teles = 'LBT'
+if INST == 'GMOS-N':
+  teles = 'Gemini'
   finalCat = PS1_to_Gemini(PS1PhotCat)
-if teles=='LBT':
+if teles == 'LBT':
   finalCat = PS1_to_LBT(PS1PhotCat)
 
 #WHAT IS THIS??????? REP 20181203
 # try a fake??? to make it run
 # Calculate magnitude calibration factor
-if teles=='LBT':
+if teles == 'LBT':
     magCalibArray = (finalCat[FILTER + 'MeanPSFMag_CFHT']
-                 - finalCat[magKeyName])
-    dmagCalibArray = (finalCat[FILTER + 'MeanPSFMagErr'] ** 2 +
-                  finalCat['d' + magKeyName] ** 2) ** 0.5
+                     - finalCat[magKeyName])
+    dmagCalibArray = (finalCat[FILTER + 'MeanPSFMagErr'] ** 2
+                      + finalCat['d' + magKeyName] ** 2) ** 0.5
     magCalibration = np.nanmean(magCalibArray)
     dmagCalibration = np.std(magCalibArray)
-if teles=='Gemini':
+if teles == 'Gemini':
     magCalibArray = (finalCat[FILTER[0] + 'MeanPSFMag_Gemini']
-                 - finalCat[magKeyName])
-    dmagCalibArray = (finalCat[FILTER[0] + 'MeanPSFMagErr'] ** 2 +
-                  finalCat['d' + magKeyName] ** 2) ** 0.5
+                     - finalCat[magKeyName])
+    dmagCalibArray = (finalCat[FILTER[0] + 'MeanPSFMagErr'] ** 2
+                      + finalCat['d' + magKeyName] ** 2) ** 0.5
     magCalibration = np.nanmean(magCalibArray)
     dmagCalibration = np.std(magCalibArray)
 #print([i for i in magCalibArray])
@@ -374,11 +376,13 @@ finalTNOphotCFHT = (TNOPhot.magnitude - lineAperCorr + magCalibration,
                     (TNOPhot.dmagnitude ** 2
                      + dmagCalibration ** 2) ** 0.5)
 zptGood = MAGZERO + magCalibration
-#finalTNOphotPS1 = CFHT_to_PS1(finalTNOphotCFHT[0], finalTNOphotCFHT[1], FILTER)
-if teles=='LBT':
-  finalTNOphotPS1 = LBT_not_to(finalTNOphotCFHT[0], finalTNOphotCFHT[1], FILTER)
-if teles=='Gemini':
-  finalTNOphotPS1 = LBT_not_to(finalTNOphotCFHT[0], finalTNOphotCFHT[1], FILTER)
+#finalTNOphotPS1 = CFHT_to_PS1(finalTNOphotCFHT[0], finalTNOphotCFHT[1],FILTER)
+if teles == 'LBT':
+  finalTNOphotPS1 = LBT_not_to(finalTNOphotCFHT[0],
+                               finalTNOphotCFHT[1], FILTER)
+if teles == 'Gemini':
+  finalTNOphotPS1 = LBT_not_to(finalTNOphotCFHT[0],
+                               finalTNOphotCFHT[1], FILTER)
 #FIX THIS!!!! convert back
 
 print("\nFINAL (calibrated) RESULT!")
