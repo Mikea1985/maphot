@@ -198,12 +198,16 @@ def best(imageArray, repfactor, **kwargs):
   nCatMembers = [len(cat['XWIN_IMAGE']) for cat in catalogueArray]
   bestID = np.argmax(nCatMembers)
   bestSExCat = catalogueArray[bestID]
-  (bestData, _, _, _, _, MJDm, _, NAXIS1, NAXIS2, _, _,INS
+  (bestData, _, _, _, _, MJDm, _, NAXIS1, NAXIS2, _, _, INS
    ) = getDataHeader(imageArray[bestID] + '.fits', extno=extno)
+  teles = 'LBT'
+  if INS == 'GMOS-N':
+    teles = 'Gemini'
   print("The best image is {}".format(imageArray[bestID]))
   bestSExCatTrimmed = trimCatalog(bestSExCat, bestData, dcut=30, mcut=55000,
                                   snrcut=0, shapecut=5,  # basically no cuts
-                                  naxis1=NAXIS1, naxis2=NAXIS2)
+                                  naxis1=NAXIS1, naxis2=NAXIS2,
+                                  telescope=teles)
   catalogueArray[bestID] = bestSExCatTrimmed  # lazy workaround
   PS1SharedCat = PanSTARRSStuff(catalogueArray, bestID)
   print('{}'.format(len(PS1SharedCat)) +

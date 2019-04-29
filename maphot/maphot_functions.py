@@ -36,7 +36,7 @@ from astropy.table import Column, Table
 from astropy import wcs
 from trippy import scamp, MCMCfit, psf, psfStarChooser
 #from stsci import numdisplay  # pylint: disable=import-error
-import zscale
+from trippy import tzscale as zscale
 from __version__ import __version__
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
@@ -109,7 +109,8 @@ def PS1_vs_SEx(PS1Cat, SExCat, maxDist=1, appendSEx=True):
   return PS1SExCatalog
 
 
-def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut, naxis1, naxis2):
+def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut, naxis1, naxis2,
+                telescope=None):
   """trimCatalog trims the SExtractor catalogue of non-roundish things,
   really bright things and things that are near other things.
   cat = the full catalogue from SExtractor.
@@ -141,7 +142,12 @@ def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut, naxis1, naxis2):
        and shape < shapecut
        and xi > dcut + 1 and xi < naxis1 - dcut - 1
        and yi > dcut + 1 and yi < naxis2 - dcut - 1):
-      good.append(ii)
+         if telescope == 'Gemini':
+           if (xi > 1046 + 1 + dcut and xi < 2064 - dcut - 1
+               and yi > 13 and yi < 2271):
+             good.append(ii)
+         else:
+             good.append(ii)
   good = np.array(good)
   outcat = {}
   for ii in cat:
@@ -203,7 +209,7 @@ def writeSExParFiles(imageFileName, minArea, threshold, zpt, aperture,
                               minArea=minArea, threshold=threshold,
                               zpt=zpt, aperture=aperture,
                               kron_factor=kron_factor, min_radius=min_radius,
-                              catalogType='FITS_LDAC', saturate=60000)
+                              catalogType='FITS_LDAC', saturate=120000)
   scamp.makeParFiles.writeConv()
   scamp.makeParFiles.writeParam('def.param', numAps=1)
 
@@ -664,7 +670,7 @@ def getDataHeader(inputFile, extno=None):
   WCS = wcs.WCS(header)
   INST = header0['INSTRUME'] #Gemini
   return(data, header, EXPTIME, MAGZERO, MJD, MJDmid,
-         GAIN, NAXIS1, NAXIS2, WCS, FILTER,INST)
+         GAIN, NAXIS1, NAXIS2, WCS, FILTER, INST)
 
 
 def inspectStars(data, catalogue, repfactor, **kwargs):
@@ -941,7 +947,8 @@ def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
                       np.min([NAXIS2 - 1, int(yt) + 5]),
                       np.max([0, int(xt) - 5]):
                       np.min([NAXIS1 - 1, int(xt) + 5])])
-  if (fitPars is None) or remove:
+  #if (fitPars is None) or remove:
+  if (fitPars is None) and remove:
     print("Should I be doing this?")
     fitter = MCMCfit.MCMCfitter(goodPSF, Data)
     fitter.fitWithModelPSF(dtransx + xt, dtransy + yt,
