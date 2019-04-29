@@ -3,7 +3,7 @@
 of a single object on a single night.
 Usage: (-h gives this line as well)
 maphot.py -c <coofile> -f <fitsfile> -v False -. True -o False -r True
-          -a 07 -t False -e 0
+          -a 0.7 -t False -e 0
 Defaults are:
 inputFile = 'a100.fits'  # Change with '-f <filename>' flag
 coofile = 'coords.in'  # Change with '-c <coofile>' flag
@@ -12,7 +12,7 @@ centroid = True  # Change with '-. False' or  --centroid False'
 overrideSEx = False  # Change with '-o True' or '--override True'
 remove = True  # Change with '-r False' or '--remove False'
 aprad = 0.7  # Change with '-a 1.5' or '--aprad 1.5'
-ext = 0  # Change with '-e 0' or '--ext 0'
+extno = 0  # Change with '-e 1' or '--extno 1'
 tnotrack = False  # Change with '-t True'
 sexparfile = 'sex.pars'  # Change with '-s filename' or '--sexparfile filename'
 coordsfile is a file that contains:
@@ -339,7 +339,7 @@ if INST == 'GMOS-N':
   finalCat = PS1_to_Gemini(PS1PhotCat)
 if teles == 'LBT':
   finalCat = PS1_to_LBT(PS1PhotCat)
-
+print(teles)
 #WHAT IS THIS??????? REP 20181203
 # try a fake??? to make it run
 # Calculate magnitude calibration factor
