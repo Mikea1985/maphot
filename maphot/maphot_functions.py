@@ -293,20 +293,26 @@ def getArguments(sysargv):
   Acentroid = False  # Change with '-. False' or  --centroid False'
   AoverrideSEx = False  # Change with '-o True' or '--override True'
   Aremove = False  # Change with '-r False' or '--remove False'
-  tnotrack=False # true tracks TNO
-  Aaprad, AroundAperRad = 0.7, 0.7  # Negative Aaprad = find optimal
+  Atnotrack = False  # true tracks TNO
+  Aaprad = 0.7
+  AroundAperRad = 0.7  # np.arange(0.5, 3.1, 0.1)
+  #AroundAperRad = np.arange(0.5, 3.1, 0.1)
+  #AroundAperRad = np.array([0.7, 1.0, 1.5, 2.0, 3.0, 5.0])
+  AroundAperRad = np.array([0.7, 0.7, 0.7])
   Arepfact, Apxscale, = 10, 1.0
-  Asexparfile, Aextno = None, None
+  Asexparfile, Aextno = None, 1
   AignoreWarnings = False
   try:
     options, dummy = getopt.getopt(sysargv[1:], "f:c:v:.:o:r:a:h:s:e:i:t:",
                                    ["imagefile=", "MPCfile=", "verbose=",
                                     "centroid=", "overrideSEx=",
                                     "remove=", "aprad=", "sexparfile=",
-                                    "extension=", "ignoreWarnings=","tracktno="])
+                                    "extension=", "ignoreWarnings=",
+                                    "tracktno="])
     for opt, arg in options:
       if (opt in ("-v", "-verbose", "-.", "--centroid", "-o", "--overrideSEx",
-                  "-r", "--remove","-t","--tracktno", "-i", "--ignoreWarnings")):
+                  "-r", "--remove", "-t", "--tracktno",
+                  "-i", "--ignoreWarnings")):
         if arg == '0' or arg == 'False':
           arg = False
         elif arg == '1' or arg == 'True':
@@ -338,7 +344,7 @@ def getArguments(sysargv):
       elif opt in ('-i', '--ignoreWarnings'):
         AignoreWarnings = arg
       elif opt in ('-t', '--tracktno'):
-        tnotrack = arg
+        Atnotrack = arg
   except TypeError as error:
     print(error)
     sys.exit()
@@ -346,8 +352,8 @@ def getArguments(sysargv):
     print(" Input ERROR! \n", useage)
     sys.exit(2)
   return (AinputFile, Acoordsfile, Averbose, Acentroid,
-          AoverrideSEx, Aremove, Aaprad, tnotrack, Arepfact, Apxscale, 
-          Aaprad,Asexparfile, Aextno, AignoreWarnings)
+          AoverrideSEx, Aremove, Aaprad, Atnotrack, Arepfact, Apxscale,
+          AroundAperRad, Asexparfile, Aextno, AignoreWarnings)
 
 
 def findTNO(xzero, yzero, fullcat, outfile):
@@ -401,7 +407,7 @@ def predicted2catalog(someCatalog, someCoords):
 
 
 def saveTNOMag(image_fn, mpc_fn, headerMJD, obsMJD, SExTNOCoord, x_tno, y_tno,
-               zpt, obsFILTER, FWHM, aperMulti, TNOphot,
+               zpt, obsFILTER, FWHM, aperMulti, TNOphot, TNOAperCorr,
                magCalibration, dmagCalibration, finalTNOphotINST, zptGood,
                finalTNOphotPS1, timeNow, TNObgRegion, version, extno=None):
   '''Save the TNO magnitude and other information.'''
@@ -539,7 +545,7 @@ def PS1_to_LBT(catalog):
                       description=catalog['zMeanPSFMag'].description +
                       ' transformed to telescope filter')
   GeminiCat = catalog.copy()
-  GeminiCat.add_columns((PS1rGemini, PS1gGemini,PS1zGemini))
+  GeminiCat.add_columns((PS1rGemini, PS1gGemini, PS1zGemini))
   return GeminiCat
 
 def PS1_to_CFHT(catalog, filters='griz'):
@@ -661,14 +667,14 @@ def getDataHeader(inputFile, extno=None):
       FILTER = header['FILTER2'][0]  # Gemini
     except:
       try:
-        FILTER =  header0['FILTER2']  # Gemini
+        FILTER = header0['FILTER2']  # Gemini
       except:
         try:
           FILTER = header['FILTER'][0]  # CFHT/Subaru
         except:
           FILTER = header0['FILTER'][0]  # LBT
   WCS = wcs.WCS(header)
-  INST = header0['INSTRUME'] #Gemini
+  INST = header0['INSTRUME']  # Gemini, CFHT, Subaru, LBT
   return(data, header, EXPTIME, MAGZERO, MJD, MJDmid,
          GAIN, NAXIS1, NAXIS2, WCS, FILTER, INST)
 
@@ -833,11 +839,8 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
   fit takes time proportional to nWalkers*(2+nBurn+nStep).
   '''
   fitPars = None
-  if (x0 == xt) & (y0 == yt):  # if SExtractor not find TNO, run centroid
-    centroid = True
-    SExFoundIt = False
-  else:
-    SExFoundIt = True
+  SExFoundIt = False if ((x0 == xt) & (y0 == yt)) else True
+  centroid = True if not SExFoundIt else centroid  # if SEx no find TNO
   Data = (data[np.max([0, int(yt) - 200]):np.min([NAXIS2 - 1, int(yt) + 200]),
                np.max([0, int(xt) - 200]):np.min([NAXIS1 - 1, int(xt) + 200])]
           - bg)
@@ -854,7 +857,6 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
                       np.min([NAXIS1 - 1, int(xt) + 5])])
   xt0, yt0 = xt, yt
   while True:  # Breaks once a centroid has been selected.
-    #(z1, z2) = numdisplay.zscale.zscale(Zoom)
     (z1, z2) = zscale.zscale(Zoom)
     normer = interval.ManualInterval(z1, z2)
     pyl.imshow(normer(Zoom), origin='lower')
@@ -915,8 +917,7 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
         print("Estimated    (black)  x,y = ", x0, y0)
         pyl.title(filename if filename is not None else '')
         pyl.show()
-        yn = input('Accept '
-                   + 'SExtractor centroid (S), or estimate (e), '
+        yn = input('Accept ' + 'SExtractor centroid (S), or estimate (e), '
                    + ' or recentroid using MCMC (m or c)? ')
         if ('e' in yn) or ('E' in yn):  # if press e/E use estimate
           xt, yt = x0, y0

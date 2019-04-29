@@ -38,7 +38,7 @@ from maphot_functions import (getArguments, getObservations, coordRateAngle,
                               getSExCatalog, predicted2catalog,
                               saveTNOMag, saveStarMag, saveTNOMag2,
                               getDataHeader, addPhotToCatalog, PS1_vs_SEx,
-                              PS1_to_Gemini,  # PS1_to_CFHT, CFHT_to_PS1,
+                              PS1_to_Gemini, PS1_to_CFHT,  # CFHT_to_PS1,
                               inspectStars, chooseCentroid, removeTSF,
                               PS1_to_LBT, extractGoodStarCatalogue, LBT_not_to)
 from __version__ import __version__
@@ -60,7 +60,10 @@ useage = 'maphot -c <coordsfile> -f <fitsfile> -v False '\
 if ignoreWarnings:
   warnings.filterwarnings("ignore")
 
-roundAperRad = aprad
+#roundAperRad = aprad
+print(aprad, roundAperRad)
+starAperRad = roundAperRad
+tnoAperRad = roundAperRad
 
 print("ifile =", inputFile, ", coords =", coordsfile, ", verbose =", verbose,
       ", centroid =", centroid, ", overrideSEx =", overrideSEx,
@@ -73,6 +76,14 @@ if verbose:
 # Read in the image and get the data, header and keywords needed.
 (data, header, EXPTIME, MAGZERO, MJD, MJDm, GAIN, NAXIS1, NAXIS2, WCS, FILTER,
  INST) = getDataHeader(inputFile, extno=extno)
+
+# Which telescope is this?
+teles = 'LBT'
+if INST == 'MegaPrime':
+  teles = 'CFHT'
+if INST == 'GMOS-N':
+  teles = 'Gemini'
+print("Using telescope: " + teles)
 
 # Set up an output file that has all sorts of information.
 # Preferably, whenever something is printed to screen, save it here too.
@@ -102,6 +113,17 @@ print('TNO predicted to be at {},\nmoving at '.format(TNOpred) +
 outfile.write('\nTNO predicted to be at {},\nmoving at '.format(TNOpred) +
               '{} pix/hr inclined {} deg (to x+).'.format(rate, angle))
 xPred, yPred = TNOpred
+# photometry parameters based on sidereal/non-sidereal tracking
+if tnotrack:
+  ltno = 0.0
+  atno = 0.0
+  lstar = (EXPTIME / 3600.) * rate / pxscale
+  astar = angle
+else:
+  lstar = 0.0
+  astar = 0.0
+  ltno = (EXPTIME / 3600.) * rate / pxscale
+  atno = angle
 
 #Get the Source Extractor catalogue
 if SExParFile is None:
@@ -138,23 +160,16 @@ try:
 except IOError:
   print('Uh oh! Unpickling unsuccesful. Does ' + bestCatName + ' exist?')
   print('If not, run best.best([fitsList]).')
-  #best.best([glob.glob('*.fits')], repfact)
-  #bestCat = best.unpickleCatalogue(bestCatName)
   raise IOError(bestCatName + ' missing. Run best.best')
 # Match phot stars to PS1 catalog
 catalog_psf = PS1_vs_SEx(bestCat, fullSExCat, maxDist=1.0, appendSEx=True)
 
 # Restore PSF if exist, otherwise build it.
 try:
-  #goodPSF = psf.modelPSF(restore=inputName + '_psf.fits')
-  #fwhm = goodPSF.FWHM()
-  #print("fwhm = ", fwhm)
-  #outfile.write("\nfwhm = {}\n".format(fwhm))
   goodStarFile = open(inputName + '_goodStars.pickle', 'rb')
-  (goodFits, goodMeds, goodSTDs, goodPSF, roundAperCorr
+  (goodFits, goodMeds, goodSTDs, goodPSF, starAperCorr, tnoAperCorr
    ) = dill.load(goodStarFile)
   goodStarFile.close()
-  #goodPSF.fitted=False
   print("PSF restored from file.")
   outfile.write("\nPSF restored from file\n")
   fwhm = goodPSF.FWHM()
@@ -175,21 +190,24 @@ except IOError:
   outfile.write("\n fwhm = {}\n".format(fwhm))
   goodPSF.line(rate, angle, EXPTIME / 3600., pixScale=pxscale,
                useLookupTable=True)
-  goodPSF.computeRoundAperCorrFromPSF(psf.extent(0.1 * fwhm, 4 * fwhm, 100),
+  goodPSF.computeRoundAperCorrFromPSF(psf.extent(0.1 * fwhm, 6 * fwhm, 100),
                                       display=False,
                                       displayAperture=False,
                                       useLookupTable=True)
-  roundAperCorr = goodPSF.roundAperCorr(roundAperRad * fwhm)
-  goodPSF.computeLineAperCorrFromTSF(psf.extent(0.1 * fwhm, 4 * fwhm, 100),
+  goodPSF.computeLineAperCorrFromTSF(psf.extent(0.1 * fwhm, 6 * fwhm, 100),
                                      l=(EXPTIME / 3600.) * rate / pxscale,
                                      a=angle, display=False,
                                      displayAperture=False)
+  starAperCorr = (goodPSF.lineAperCorr(starAperRad * fwhm) if tnotrack
+                  else goodPSF.roundAperCorr(starAperRad * fwhm))
+  tnoAperCorr = (goodPSF.roundAperCorr(tnoAperRad * fwhm) if tnotrack
+                 else goodPSF.lineAperCorr(tnoAperRad * fwhm))
   goodPSF.psfStore(inputName + '_psf.fits')
   fwhm = goodPSF.FWHM()
   print("  fwhm = ", fwhm)
   outfile.write("\nfwhm = {}\n".format(fwhm))
   goodStarFile = open(inputName + '_goodStars.pickle', 'wb')
-  dill.dump([goodFits, goodMeds, goodSTDs, goodPSF, roundAperCorr],
+  dill.dump([goodFits, goodMeds, goodSTDs, goodPSF, starAperCorr, tnoAperCorr],
             goodStarFile, dill.HIGHEST_PROTOCOL)
   goodStarFile.close()
 except UnboundLocalError:
@@ -197,24 +215,15 @@ except UnboundLocalError:
   outfile.write("\nData error occured!\n")
   raise
 
+dAperCorr = 0.02
+print("tnoAperCorr, starAperCorr = ", tnoAperCorr, starAperCorr, "\n")
+outfile.write("\ntnoAperCorr,starAperCorr={},{}".format(tnoAperCorr,
+                                                        starAperCorr))
+
 #print(goodStars)
 catalog_phot = extractGoodStarCatalogue(catalog_psf, goodFits[:, 4],
                                         goodFits[:, 5])
 #catalog_phot = catalog_psf
-
-# photometry parameters based on sidereal/non-sidereal tracking
-lstar = 0.0
-astar = 0.0
-ltno = (EXPTIME / 3600.) * rate / pxscale
-atno = angle
-if tnotrack:
-  ltno = 0.0
-  atno = 0.0
-  lstar = (EXPTIME / 3600.) * rate / pxscale
-  astar = angle
-AperRadstar = aprad
-#### FIX THIS
-# it calls for aperradstar below before it is set.
 
 # Do photometry for the trimmed catalog stars.
 # This will be used to find a set of non-variable stars, in order to
@@ -230,20 +239,20 @@ outfile.write("\n#   x       y   magnitude  dmagnitude")
 for xcat, ycat in np.array(list(zip(catalog_phot['XWIN_IMAGE'],
                                     catalog_phot['YWIN_IMAGE']))):
   starPhot = pill.pillPhot(data, repFact=repfact)
-  starPhot(xcat, ycat, radius=fwhm * AperRadstar, l=lstar, a=astar,
+  starPhot(xcat, ycat, radius=fwhm * starAperRad, l=lstar, a=astar,
            exptime=EXPTIME,
-           #zpt=26.0, skyRadius=4 * fwhm, width=30.,
            zpt=MAGZERO, skyRadius=4 * fwhm, width=5 * fwhm,
            enableBGSelection=verbose, display=verbose, backupMode="smart",
            trimBGHighPix=3., zscale=False)
   starPhot.SNR(gain=GAIN, useBGstd=True)
-  print("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f}".format(
-        xcat, ycat, starPhot.magnitude - roundAperCorr, starPhot.dmagnitude))
-  outfile.write("\n{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f}".format(
-                xcat, ycat, starPhot.magnitude - roundAperCorr,
-                starPhot.dmagnitude))
-  magStars.append(starPhot.magnitude - roundAperCorr)
-  dmagStars.append(starPhot.dmagnitude)
+  starPhotInst = starPhot.magnitude - starAperCorr
+  dstarPhotInst = (starPhot.dmagnitude ** 2 + dAperCorr ** 2) ** 0.5
+  print("{0:13.8f} {1:13.8f} {2:} {3:}".format(
+        xcat, ycat, starPhotInst, dstarPhotInst))
+  outfile.write("\n{0:13.8f} {1:13.8f} {2:} {3:}".format(
+                xcat, ycat, starPhotInst, dstarPhotInst))
+  magStars.append(starPhotInst)
+  dmagStars.append(dstarPhotInst)
   fluxStars.append(starPhot.sourceFlux)
   SNRStars.append(starPhot.snr)
   bgStars.append(starPhot.bg)
@@ -257,40 +266,8 @@ print('\nPhotometry of moving object')
 outfile.write("\nPhotometry of moving object\n")
 TNOPhot = pill.pillPhot(data, repFact=repfact)
 # Make sure to use IRAF coordinates not numpy/sextractor coordinates!
-if aprad > 0:
-  bestap = np.arange(aprad, aprad + 1)[0]  # stupid but wouldn't work otherwise
-else:  # Automatically identify best aperture.
-  apertures = np.arange(0.7, 2.0, 0.1)
-  linedmag = np.zeros(len(apertures))
-  for i, ap in enumerate(apertures):
-    TNOPhot(xUse, yUse, radius=fwhm * ap, l=ltno,
-            a=atno, skyRadius=4 * fwhm, width=6 * fwhm,
-            #zpt=26.0, exptime=EXPTIME, enableBGSelection=False, display=False,
-            zpt=MAGZERO, exptime=EXPTIME, enableBGSelection=False,
-            display=False, backupMode="smart", trimBGHighPix=3., zscale=False)
-    TNOPhot.SNR(gain=GAIN, verbose=False, useBGstd=True)
-    linedmag[i] = TNOPhot.dmagnitude
-  bestap = apertures[np.argmin(linedmag)]
-lineAperRad = bestap
-print("Aperture used= ", bestap)
-outfile.write("\nBest aperture = {}".format(bestap))
-lineAperCorr = goodPSF.lineAperCorr(lineAperRad * fwhm)
-print("lineAperCorr, roundAperCorr = ", lineAperCorr, roundAperCorr, "\n")
-outfile.write("\nlineAperCorr,roundAperCorr={},{}".format(lineAperCorr,
-                                                          roundAperCorr))
-AperCorrStar = roundAperCorr
-AperCorrTNO = lineAperCorr
-AperRadStar = roundAperRad
-AperRadTNO = lineAperRad
 
-if tnotrack:
-  AperCorrStar = lineAperCorr
-  AperCorrTNO = roundAperCorr
-  AperRadStar = lineAperRad
-  AperRadTNO = roundAperRad
-
-
-TNOPhot(xUse, yUse, radius=fwhm * AperRadTNO,
+TNOPhot(xUse, yUse, radius=fwhm * tnoAperRad,
         l=ltno, a=atno, skyRadius=4 * fwhm, width=6 * fwhm,
         #zpt=26.0, exptime=EXPTIME, enableBGSelection=True, display=True,
         zpt=MAGZERO, exptime=EXPTIME, enableBGSelection=True, display=True,
@@ -310,21 +287,22 @@ outfile.write("\nTNOPhot.sourceFlux={}".format(TNOPhot.sourceFlux))
 outfile.write("\nTNOPhot.snr={}".format(TNOPhot.snr))
 outfile.write("\nTNOPhot.bg={}".format(TNOPhot.bg))
 
+TNOPhotInst = TNOPhot.magnitude - tnoAperCorr
+dTNOPhotInst = (TNOPhot.dmagnitude ** 2 + dAperCorr ** 2) ** 0.5
+
 print("\nAlmost final (non-calibrated) results!")
 print("#{0:12} {1:13} {2:13} {3:13} {4:13}".format(
       '   x ', '    y ', ' magnitude ', '  dmagnitude ', ' magzero '))
-print("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
-      xUse, yUse, TNOPhot.magnitude - lineAperCorr,
-      TNOPhot.dmagnitude, MAGZERO))
+print("{0:13.8f} {1:13.8f} {2:} {3:} {4:13.10f}\n".format(
+      xUse, yUse, TNOPhotInst, dTNOPhotInst, MAGZERO))
 outfile.write("\nFINAL (non-calibrated) RESULT!")
 outfile.write("\n#{0:12} {1:13} {2:13} {3:13} {4:13}\n".format(
               '   x ', '    y ', ' magnitude ', '  dmagnitude ', ' magzero '))
-outfile.write("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
-              xUse, yUse, TNOPhot.magnitude - lineAperCorr,
-              TNOPhot.dmagnitude, MAGZERO))
+outfile.write("{0:13.8f} {1:13.8f} {2:} {3:} {4:13.10f}\n".format(
+              xUse, yUse, TNOPhotInst, dTNOPhotInst, MAGZERO))
 
 # Add photometry to the star catalog
-magKeyName = FILTER + 'MagTrippy' + str(bestap)
+magKeyName = FILTER + 'MagTrippy' + str(starAperRad)
 PS1PhotCat = addPhotToCatalog(catalog_phot['XWIN_IMAGE'],
                               catalog_phot['YWIN_IMAGE'], catalog_phot,
                               {magKeyName: np.array(magStars),
@@ -332,57 +310,50 @@ PS1PhotCat = addPhotToCatalog(catalog_phot['XWIN_IMAGE'],
                                'TrippySourceFlux': np.array(fluxStars),
                                'TrippySNR': np.array(SNRStars),
                                'TrippyBG': np.array(bgStars)})
-# Convert star catalog's PS1 magnitudes to CFHT magnitudes
-teles = 'LBT'
-if INST == 'GMOS-N':
-  teles = 'Gemini'
-  finalCat = PS1_to_Gemini(PS1PhotCat)
-if teles == 'LBT':
-  finalCat = PS1_to_LBT(PS1PhotCat)
-print(teles)
-#WHAT IS THIS??????? REP 20181203
-# try a fake??? to make it run
+# Convert star catalog's PS1 magnitudes to Instrument magnitudes
+finalCat = PS1_to_LBT(PS1PhotCat) if teles == 'LBT' \
+           else PS1_to_Gemini(PS1PhotCat) if teles == 'Gemini' \
+           else PS1_to_CFHT(PS1PhotCat)
 # Calculate magnitude calibration factor
+if teles == 'CFHT':
+    magCalibArray = (finalCat[FILTER + 'MeanPSFMag_CFHT']
+                     - finalCat[magKeyName])
+    dmagCalibArray = (finalCat[FILTER + 'MeanPSFMagErr'] ** 2
+                      + finalCat['d' + magKeyName] ** 2) ** 0.5
 if teles == 'LBT':
     magCalibArray = (finalCat[FILTER + 'MeanPSFMag_CFHT']
                      - finalCat[magKeyName])
     dmagCalibArray = (finalCat[FILTER + 'MeanPSFMagErr'] ** 2
                       + finalCat['d' + magKeyName] ** 2) ** 0.5
-    magCalibration = np.nanmean(magCalibArray)
-    dmagCalibration = np.std(magCalibArray)
 if teles == 'Gemini':
     magCalibArray = (finalCat[FILTER[0] + 'MeanPSFMag_Gemini']
                      - finalCat[magKeyName])
     dmagCalibArray = (finalCat[FILTER[0] + 'MeanPSFMagErr'] ** 2
                       + finalCat['d' + magKeyName] ** 2) ** 0.5
-    magCalibration = np.nanmean(magCalibArray)
-    dmagCalibration = np.std(magCalibArray)
-#print([i for i in magCalibArray])
-#print([i for i in dmagCalibArray])
-#print(magCalibration)
-#print(dmagCalibration)
+# First use lazy method to identify outliers:
+magCalibration = np.nanmean(magCalibArray)
+dmagCalibration = np.std(magCalibArray)
+# Calculate it again with weighted average and outlier rejection:
 sigmaclip = [np.abs(magCalibArray - magCalibration) < 3 * dmagCalibration]
-#print(sigmaclip)
-(magCalibration,
- sumOfWeights) = np.average(magCalibArray[sigmaclip],
-                            weights=1. / dmagCalibArray[sigmaclip] ** 2,
-                            returned=True)
+(magCalibration, sumOfWeights
+ ) = np.average(magCalibArray[sigmaclip], returned=True,
+                weights=1. / dmagCalibArray[sigmaclip] ** 2)
 dmagCalibration = 1. / sumOfWeights ** 0.5
-#print(magCalibration)
-#print(dmagCalibration)
 
 # Correct the TNO magnitude and zero point
-finalTNOphotCFHT = (TNOPhot.magnitude - lineAperCorr + magCalibration,
-                    (TNOPhot.dmagnitude ** 2
-                     + dmagCalibration ** 2) ** 0.5)
+finalTNOphotInst = (TNOPhotInst + magCalibration,
+                    (dTNOPhotInst ** 2 + dmagCalibration ** 2) ** 0.5)
 zptGood = MAGZERO + magCalibration
-#finalTNOphotPS1 = CFHT_to_PS1(finalTNOphotCFHT[0], finalTNOphotCFHT[1],FILTER)
+#finalTNOphotPS1 = CFHT_to_PS1(finalTNOphotInst[0], finalTNOphotInst[1],FILTER)
+if teles == 'CFHT':
+  finalTNOphotPS1 = LBT_not_to(finalTNOphotInst[0],
+                               finalTNOphotInst[1], FILTER)
 if teles == 'LBT':
-  finalTNOphotPS1 = LBT_not_to(finalTNOphotCFHT[0],
-                               finalTNOphotCFHT[1], FILTER)
+  finalTNOphotPS1 = LBT_not_to(finalTNOphotInst[0],
+                               finalTNOphotInst[1], FILTER)
 if teles == 'Gemini':
-  finalTNOphotPS1 = LBT_not_to(finalTNOphotCFHT[0],
-                               finalTNOphotCFHT[1], FILTER)
+  finalTNOphotPS1 = LBT_not_to(finalTNOphotInst[0],
+                               finalTNOphotInst[1], FILTER)
 #FIX THIS!!!! convert back
 
 print("\nFINAL (calibrated) RESULT!")
@@ -402,8 +373,8 @@ timeNow = datetime.now().strftime('%Y-%m-%d/%H:%M:%S')
 saveTNOMag2(inputFile, coordsfile, MJDm, TNOCoords, xUse, yUse,
             FILTER, fwhm, finalTNOphotPS1, timeNow, __version__, extno=extno)
 saveTNOMag(inputFile, coordsfile, MJD, MJDm, TNOCoords, xUse, yUse,
-           MAGZERO, FILTER, fwhm, bestap, TNOPhot,
-           magCalibration, dmagCalibration, finalTNOphotCFHT, zptGood,
+           MAGZERO, FILTER, fwhm, tnoAperRad, TNOPhot, tnoAperCorr,
+           magCalibration, dmagCalibration, finalTNOphotInst, zptGood,
            finalTNOphotPS1, timeNow, np.array(TNOPhot.bgSamplingRegion),
            __version__, extno=extno)
 saveStarMag(inputFile, finalCat[sigmaclip], timeNow, __version__,
