@@ -37,9 +37,10 @@ import best
 from maphot_functions import (getArguments, getObservations, coordRateAngle,
                               getSExCatalog, predicted2catalog,
                               saveTNOMag, saveStarMag, saveTNOMag2,
-                              getDataHeader, addPhotToCatalog, PS1_vs_SEx,
+                              getDataHeader, PS1_vs_SEx,
                               PS1_to_Gemini, PS1_to_CFHT,  # CFHT_to_PS1,
                               inspectStars, chooseCentroid, removeTSF,
+                              addTrippyToCat, calcCalib,
                               PS1_to_LBT, extractGoodStarCatalogue, LBT_not_to)
 from __version__ import __version__
 from pix2world import pix2MPC
@@ -301,44 +302,30 @@ outfile.write("\n#{0:12} {1:13} {2:13} {3:13} {4:13}\n".format(
 outfile.write("{0:13.8f} {1:13.8f} {2:} {3:} {4:13.10f}\n".format(
               xUse, yUse, TNOPhotInst, dTNOPhotInst, MAGZERO))
 
-# Add photometry to the star catalog
-magKeyName = FILTER + 'MagTrippy' + str(starAperRad)
-PS1PhotCat = addPhotToCatalog(catalog_phot['XWIN_IMAGE'],
-                              catalog_phot['YWIN_IMAGE'], catalog_phot,
-                              {magKeyName: np.array(magStars),
-                               'd' + magKeyName: np.array(dmagStars),
-                               'TrippySourceFlux': np.array(fluxStars),
-                               'TrippySNR': np.array(SNRStars),
-                               'TrippyBG': np.array(bgStars)})
 # Convert star catalog's PS1 magnitudes to Instrument magnitudes
-finalCat = PS1_to_LBT(PS1PhotCat) if teles == 'LBT' \
-           else PS1_to_Gemini(PS1PhotCat) if teles == 'Gemini' \
-           else PS1_to_CFHT(PS1PhotCat)
+catphotPS1 = PS1_to_LBT(catalog_phot) if teles == 'LBT' \
+             else PS1_to_Gemini(catalog_phot) if teles == 'Gemini' \
+             else PS1_to_CFHT(catalog_phot)
+
+# Add trippy photometry to the star catalog
+finalCat = catphotPS1
+
+magCalibration = np.zeros(len(starAperRad))
+dmagCalibration = magCalibration.copy()
+sigmaclip = []
+print(np.shape(starAperRad))
+for i, starAR in enumerate(starAperRad):
+  apStr = str(starAR)
+  print(apStr)
+  finalCat = addTrippyToCat(finalCat, np.array(magStars)[:, i],
+                            np.array(dmagStars)[:, i],
+                            np.array(fluxStars)[:, i],
+                            np.array(SNRStars)[:, i],
+                            bgStars, FILTER, apStr)
 # Calculate magnitude calibration factor
-if teles == 'CFHT':
-    magCalibArray = (finalCat[FILTER + 'MeanPSFMag_CFHT']
-                     - finalCat[magKeyName])
-    dmagCalibArray = (finalCat[FILTER + 'MeanPSFMagErr'] ** 2
-                      + finalCat['d' + magKeyName] ** 2) ** 0.5
-if teles == 'LBT':
-    magCalibArray = (finalCat[FILTER + 'MeanPSFMag_CFHT']
-                     - finalCat[magKeyName])
-    dmagCalibArray = (finalCat[FILTER + 'MeanPSFMagErr'] ** 2
-                      + finalCat['d' + magKeyName] ** 2) ** 0.5
-if teles == 'Gemini':
-    magCalibArray = (finalCat[FILTER[0] + 'MeanPSFMag_Gemini']
-                     - finalCat[magKeyName])
-    dmagCalibArray = (finalCat[FILTER[0] + 'MeanPSFMagErr'] ** 2
-                      + finalCat['d' + magKeyName] ** 2) ** 0.5
-# First use lazy method to identify outliers:
-magCalibration = np.nanmean(magCalibArray)
-dmagCalibration = np.std(magCalibArray)
-# Calculate it again with weighted average and outlier rejection:
-sigmaclip = [np.abs(magCalibArray - magCalibration) < 3 * dmagCalibration]
-(magCalibration, sumOfWeights
- ) = np.average(magCalibArray[sigmaclip], returned=True,
-                weights=1. / dmagCalibArray[sigmaclip] ** 2)
-dmagCalibration = 1. / sumOfWeights ** 0.5
+  (magCalibration[i], dmagCalibration[i], sc
+   ) = calcCalib(finalCat, FILTER, apStr, teles)
+  sigmaclip.append(sc)
 
 # Correct the TNO magnitude and zero point
 finalTNOphotInst = (TNOPhotInst + magCalibration,
@@ -377,8 +364,8 @@ saveTNOMag(inputFile, coordsfile, MJD, MJDm, TNOCoords, xUse, yUse,
            magCalibration, dmagCalibration, finalTNOphotInst, zptGood,
            finalTNOphotPS1, timeNow, np.array(TNOPhot.bgSamplingRegion),
            __version__, extno=extno)
-saveStarMag(inputFile, finalCat[sigmaclip], timeNow, __version__,
-            MJD, extno=extno)
+saveStarMag(inputFile, finalCat, timeNow, __version__,
+            MJD, sigmaclip, extno=extno)
 
 # You could stop here.
 # However, to confirm that things are working well,

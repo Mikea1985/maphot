@@ -298,7 +298,7 @@ def getArguments(sysargv):
   AroundAperRad = 0.7  # np.arange(0.5, 3.1, 0.1)
   #AroundAperRad = np.arange(0.5, 3.1, 0.1)
   #AroundAperRad = np.array([0.7, 1.0, 1.5, 2.0, 3.0, 5.0])
-  AroundAperRad = np.array([0.7, 0.7, 0.7])
+  AroundAperRad = np.array([0.7, 0.701, 0.702])
   Arepfact, Apxscale, = 10, 1.0
   Asexparfile, Aextno = None, 1
   AignoreWarnings = False
@@ -414,17 +414,27 @@ def saveTNOMag(image_fn, mpc_fn, headerMJD, obsMJD, SExTNOCoord, x_tno, y_tno,
   filtStr = obsFILTER + 'RawMag'
   mag_heads = ''
   mag_strings = ''
+  cal_heads = ''
+  cal_strings = ''
+  good_heads = ''
+  good_strings = ''
+  zpt_heads = ''
+  zpt_strings = ''
   try:
     print(aperMulti[0])
-    for ai, am in enumerate(aperMulti):
-      mag_heads += filtStr + str(am) + '\td' + filtStr + str(am) + '\t'
-      mag_strings += '{}\t{}\t'.format(TNOphot.magnitude[ai],
-                                       TNOphot.dmagnitude[ai])
   except:
-    mag_heads += (filtStr + str(aperMulti) + '\td'
-                  + filtStr + str(aperMulti) + '\t')
-    mag_strings += '{}\t{}\t'.format(TNOphot.magnitude,
-                                     TNOphot.dmagnitude)
+    aperMulti = np.array([aperMulti])
+  for ai, am in enumerate(aperMulti):
+    mag_heads += filtStr + str(am) + '\td' + filtStr + str(am) + '\t'
+    mag_strings += '{}\t{}\t'.format(TNOphot.magnitude[ai],
+                                     TNOphot.dmagnitude[ai])
+    cal_heads += 'MagCalib' + str(am) + '\tdMagCalib' + str(am) + '\t'
+    cal_strings += '{}\t{}\t'.format(magCalibration[ai], dmagCalibration[ai])
+    good_heads += 'GoodMag_Inst' + str(am) + '\tdGoodMag_Inst' + str(am) + '\t'
+    good_strings += '{}\t{}\t'.format(finalTNOphotINST[ai, 0],
+                                      finalTNOphotINST[ai, 1])
+    zpt_heads += 'ZPTGood' + str(am) + '\t'
+    zpt_strings += '{}\t'.format(zptGood[ai])
   if extno is None:
     print('Warning: Treating this as a single extension file.')
     TNOFileName = image_fn.replace('.fits', '_TNOmag.txt')
@@ -435,22 +445,18 @@ def saveTNOMag(image_fn, mpc_fn, headerMJD, obsMJD, SExTNOCoord, x_tno, y_tno,
   TNOFile.write('#Filename\tObject\tMJD\tMJD_middle\t' +
                 'RA(deg)\tDec(deg)\t' +
                 'x_pix\ty_pix\tZptRaw\t' +
-                'Filter\tFWHM\t' + mag_heads +
-                'MagCalibration\tdMagCalibration\t' +
-                'GoodMag_Inst\tdGoodMag_Inst\t' +
-                'ZptGood\tRunTime\t' +
-                'GoodMag_PS1\tdGoodMag_PS1\t' +
+                'Filter\tFWHM\t' + mag_heads + cal_heads +
+                good_heads + zpt_heads + 'RunTime\t' +
+                #'GoodMag_PS1\tdGoodMag_PS1\t' +
                 'bgXMin\tbgXMax\tbgYMin\tbgYMax\t' +
                 'maphot_version\n')
   TNOFile.write('{}\t{}\t'.format(image_fn, mpc_fn) +
                 '{}\t{}\t'.format(headerMJD, obsMJD) +
                 '{}\t{}\t'.format(SExTNOCoord[0], SExTNOCoord[1]) +
-                '{}\t{}\t{}\t'.format(x_tno, y_tno, zpt) +
-                '{}\t{}\t'.format(obsFILTER, FWHM) + mag_strings +
-                '{}\t{}\t'.format(magCalibration, dmagCalibration) +
-                '{}\t{}\t'.format(finalTNOphotINST[0], finalTNOphotINST[1]) +
-                '{}\t{}\t'.format(zptGood, timeNow) +
-                '{}\t{}\t'.format(finalTNOphotPS1[0], finalTNOphotPS1[1]) +
+                '{}\t{}\t{}\t{}\t'.format(x_tno, y_tno, zpt, obsFILTER) +
+                '{}\t'.format(FWHM) + mag_strings + cal_strings +
+                good_strings + zpt_strings + '{}\t'.format(timeNow) +
+                #'{}\t{}\t'.format(finalTNOphotPS1[0], finalTNOphotPS1[1]) +
                 '{}\t{}\t{}\t{}\t'.format(*TNObgRegion) +
                 '{}\n'.format(version))
   TNOFile.close()
@@ -487,7 +493,8 @@ def saveTNOMag2(image_fn, mpc_fn, obsMJD, SExTNOCoord, x_tno, y_tno,
   return
 
 
-def saveStarMag(image_fn, finalCat, timeNow, version, headerMJD, extno=None):
+def saveStarMag(image_fn, finalCat, timeNow, version, headerMJD, sigmaclip,
+                extno=None):
   '''Save the star magnitudes and other information.'''
   if extno is None:
     print('Warning: Treating this as a single extension file.')
@@ -612,15 +619,32 @@ def addPhotToCatalog(X, Y, catTable, photDict):
   maching should be unique '''
   tableArgs = []
   photDictArgs = []
+  print(photDict.keys())
   for i, XYi in enumerate(catTable['XWIN_IMAGE', 'YWIN_IMAGE']):
     for j in np.arange(len(X)):
       if (XYi[0] == X[j]) & (XYi[1] == Y[j]):
         tableArgs.append(i)
         photDictArgs.append(j)
+  print(photDictArgs)
   bestCat = catTable[tableArgs]
   bestCat.add_columns([Column(photDict[key][photDictArgs], key)
                        for key in np.sort(photDict.keys())])
   return bestCat
+
+
+def addTrippyToCat(catphotA, magStars, dmagStars, fluxStars, SNRStars,
+                   bgStars, FILTER, apStr):
+  """Add Trippy photometry for the stars to the catalogue."""
+  magKeyName = FILTER + 'MagTrippy' + apStr
+  catphotB = addPhotToCatalog(catphotA['XWIN_IMAGE'],
+                              catphotA['YWIN_IMAGE'], catphotA,
+                              {magKeyName: np.array(magStars),
+                               'd' + magKeyName: np.array(dmagStars),
+                               'TrippySourceFlux' + apStr:
+                               np.array(fluxStars),
+                               'TrippySNR' + apStr: np.array(SNRStars),
+                               'TrippyBG' + apStr: np.array(bgStars)})
+  return catphotB
 
 
 def getDataHeader(inputFile, extno=None):
@@ -1003,6 +1027,35 @@ def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
   list.writeto(inputName + '_Data.fits', overwrite=True)
   return
 
+
+def calcCalib(cat, FILTER, apStr, telescope):
+  """Calculate the zero-point offset and uncertainty"""
+  magKeyName = FILTER + 'MagTrippy' + apStr
+  if telescope == 'CFHT':
+    magCalibArray = (cat[FILTER + 'MeanPSFMag_CFHT']
+                     - cat[magKeyName])
+    dmagCalibArray = (cat[FILTER + 'MeanPSFMagErr'] ** 2
+                      + cat['d' + magKeyName] ** 2) ** 0.5
+  if telescope == 'LBT':
+    magCalibArray = (cat[FILTER + 'MeanPSFMag_CFHT']
+                     - cat[magKeyName])
+    dmagCalibArray = (cat[FILTER + 'MeanPSFMagErr'] ** 2
+                      + cat['d' + magKeyName] ** 2) ** 0.5
+  if telescope == 'Gemini':
+    magCalibArray = (cat[FILTER[0] + 'MeanPSFMag_Gemini']
+                     - cat[magKeyName])
+    dmagCalibArray = (cat[FILTER[0] + 'MeanPSFMagErr'] ** 2
+                      + cat['d' + magKeyName] ** 2) ** 0.5
+  # First use lazy method to identify outliers:
+  magCalibration = np.nanmean(magCalibArray)
+  dmagCalibration = np.std(magCalibArray)
+  # Calculate it again with weighted average and outlier rejection:
+  sigmaclip = [np.abs(magCalibArray - magCalibration) < 3 * dmagCalibration]
+  (magCalibration, sumOfWeights
+   ) = np.average(magCalibArray[sigmaclip], returned=True,
+                  weights=1. / dmagCalibArray[sigmaclip] ** 2)
+  dmagCalibration = 1. / sumOfWeights ** 0.5
+  return magCalibration, dmagCalibration, sigmaclip
 
 # End of file.
 # Nothing to see here.
