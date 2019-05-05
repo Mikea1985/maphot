@@ -494,7 +494,7 @@ def saveTNOMag2(image_fn, mpc_fn, obsMJD, SExTNOCoord, x_tno, y_tno,
   return
 
 
-def saveStarMag(image_fn, finalCat, timeNow, version, headerMJD, sigmaclip,
+def saveStarMag(image_fn, finalCat, timeNow, version, headerMJD, sigmaclip=None,
                 extno=None):
   '''Save the star magnitudes and other information.'''
   if extno is None:
@@ -503,15 +503,23 @@ def saveStarMag(image_fn, finalCat, timeNow, version, headerMJD, sigmaclip,
   else:
     starFileName = image_fn.replace('.fits',
                                     '{0:02.0f}_starmag.txt'.format(extno))
+  if sigmaclip is None:
+    sigmaclip = np.ones(len(finalCat), dtype=bool)
+  if np.sum(sigmaclip) == np.size(sigmaclip):
+    print('Using all of the stars.')
+  else:
+    print('*** WARNING!!! Using sigma clipping! ***')
   starFile = open(starFileName, 'w')
   starFile.write('#Run time: {}\n'.format(timeNow))
   starFile.write('#Image name and MJD: {} {}\n'.format(image_fn, headerMJD))
   starFile.write('#gphot version: {}\n'.format(version))
+  starFile.write('#{}'.format(sigmaclip).replace('\n', '') + '\n')
   starFile.write(''.join(['{}\t'.format(keyi) for keyi in finalCat.keys()])
                  + '\n')
-  for row in finalCat:
+  for i, row in enumerate(finalCat):
     starFile.write(''.join(['{}\t'.format(row[keyi])
-                            for keyi in finalCat.keys()]) + '\n')
+                            for keyi in finalCat.keys()]) +
+                   '\n')
   starFile.close()
   return
 
@@ -1051,7 +1059,7 @@ def calcCalib(cat, FILTER, apStr, telescope):
   magCalibration = np.nanmean(magCalibArray)
   dmagCalibration = np.std(magCalibArray)
   # Calculate it again with weighted average and outlier rejection:
-  sigmaclip = [np.abs(magCalibArray - magCalibration) < 3 * dmagCalibration]
+  sigmaclip = np.abs(magCalibArray - magCalibration) < 3 * dmagCalibration
   (magCalibration, sumOfWeights
    ) = np.average(magCalibArray[sigmaclip], returned=True,
                   weights=1. / dmagCalibArray[sigmaclip] ** 2)

@@ -324,6 +324,7 @@ for i, starAR in enumerate(starAperRad):
   (magCalibration[i], dmagCalibration[i], sc
    ) = calcCalib(finalCat, FILTER, apStr, teles)
   sigmaclip.append(sc)
+sigmaclip = np.array(sigmaclip)
 
 # Correct the TNO magnitude and zero point
 finalTNOphotInst = (TNOPhotInst + magCalibration,

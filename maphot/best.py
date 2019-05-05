@@ -214,19 +214,19 @@ def best(imageArray, repfactor, **kwargs):
         ' PS1 sources are visible in all images.')
   timeNow = datetime.now().strftime('%Y-%m-%d/%H:%M:%S')
   if verbose:
-    saveStarMag('PS1SharedCat.txt', PS1SharedCat,
-                timeNow, __version__, 'All images', extno=extno)
+    saveStarMag('PS1SharedCat.txt', PS1SharedCat, timeNow, __version__,
+                'All images', None, extno=extno)
   bestSharedPS1SExCat = PS1_vs_SEx(PS1SharedCat, bestSExCat,
                                    maxDist=2.5, appendSEx=True)
   if verbose:
     saveStarMag('bestSharedPS1SExCat.txt', bestSharedPS1SExCat,
-                timeNow, __version__, MJDm, extno=extno)
+                timeNow, __version__, MJDm, None, extno=extno)
   inspectedSExCat = inspectStars(bestData, bestSharedPS1SExCat[:],
                                  repfactor, SExCatalogue=True,
                                  noVisualSelection=False)
   inspectedPS1Cat = findSharedPS1Catalogue([PS1SharedCat, inspectedSExCat])
   saveStarMag('InspectedStars.txt', inspectedPS1Cat,
-              timeNow, __version__, 'All images', extno=extno)
+              timeNow, __version__, 'All images', None, extno=extno)
   print('{}'.format(len(inspectedPS1Cat)) +
         ' PS1 sources left after manual inspection.')
   bestCatName = ('best.cat' if extno is None
