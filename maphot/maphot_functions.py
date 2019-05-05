@@ -296,9 +296,9 @@ def getArguments(sysargv):
   Atnotrack = False  # true tracks TNO
   Aaprad = 0.7
   AroundAperRad = 0.7  # np.arange(0.5, 3.1, 0.1)
-  #AroundAperRad = np.arange(0.5, 3.1, 0.1)
+  AroundAperRad = np.arange(0.5, 3.1, 0.1)
   #AroundAperRad = np.array([0.7, 1.0, 1.5, 2.0, 3.0, 5.0])
-  AroundAperRad = np.array([0.7, 0.701, 0.702])
+  #AroundAperRad = np.array([0.698, 0.699, 0.700, 0.701, 0.702, 0.8, 0.9, 1.0])
   Arepfact, Apxscale, = 10, 1.0
   Asexparfile, Aextno = None, 1
   AignoreWarnings = False
@@ -421,7 +421,8 @@ def saveTNOMag(image_fn, mpc_fn, headerMJD, obsMJD, SExTNOCoord, x_tno, y_tno,
   zpt_heads = ''
   zpt_strings = ''
   try:
-    print(aperMulti[0])
+    print('{} is the first aperture, {} is the last'.format(aperMulti[0],
+                                                            aperMulti[-1]))
   except:
     aperMulti = np.array([aperMulti])
   for ai, am in enumerate(aperMulti):
@@ -431,8 +432,8 @@ def saveTNOMag(image_fn, mpc_fn, headerMJD, obsMJD, SExTNOCoord, x_tno, y_tno,
     cal_heads += 'MagCalib' + str(am) + '\tdMagCalib' + str(am) + '\t'
     cal_strings += '{}\t{}\t'.format(magCalibration[ai], dmagCalibration[ai])
     good_heads += 'GoodMag_Inst' + str(am) + '\tdGoodMag_Inst' + str(am) + '\t'
-    good_strings += '{}\t{}\t'.format(finalTNOphotINST[ai, 0],
-                                      finalTNOphotINST[ai, 1])
+    good_strings += '{}\t{}\t'.format(finalTNOphotINST[0][ai],
+                                      finalTNOphotINST[1][ai])
     zpt_heads += 'ZPTGood' + str(am) + '\t'
     zpt_strings += '{}\t'.format(zptGood[ai])
   if extno is None:
@@ -669,7 +670,7 @@ def getDataHeader(inputFile, extno=None):
       try:
         MAGZERO = header['PHOT_C']   # CFHT MegaCam
       except KeyError:
-        MAGZERO = 27.0
+        MAGZERO = 27.8  # Gemini has no keyword for zero point, oddly. 
     try:
       MJD = header['MJD']  # Subaru
     except:

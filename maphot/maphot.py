@@ -28,9 +28,9 @@ import sys
 from datetime import datetime
 import warnings
 import dill
+import mp_ephem
 from six.moves import zip
 import numpy as np
-import mp_ephem
 #from astropy.io import fits
 from trippy import psf, pill
 import best
@@ -216,7 +216,7 @@ except UnboundLocalError:
   outfile.write("\nData error occured!\n")
   raise
 
-dAperCorr = 0.02
+dAperCorr = 0.01
 print("tnoAperCorr, starAperCorr = ", tnoAperCorr, starAperCorr, "\n")
 outfile.write("\ntnoAperCorr,starAperCorr={},{}".format(tnoAperCorr,
                                                         starAperCorr))
@@ -313,10 +313,8 @@ finalCat = catphotPS1
 magCalibration = np.zeros(len(starAperRad))
 dmagCalibration = magCalibration.copy()
 sigmaclip = []
-print(np.shape(starAperRad))
 for i, starAR in enumerate(starAperRad):
   apStr = str(starAR)
-  print(apStr)
   finalCat = addTrippyToCat(finalCat, np.array(magStars)[:, i],
                             np.array(dmagStars)[:, i],
                             np.array(fluxStars)[:, i],
@@ -346,12 +344,12 @@ if teles == 'Gemini':
 print("\nFINAL (calibrated) RESULT!")
 print("#{0:12} {1:13} {2:13} {3:13} {4:13}".format(
       '   x ', '    y ', ' magnitude ', '  dmagnitude ', ' magzero '))
-print("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
+print("{0:13.8f} {1:13.8f} {2:} {3:} {4:}\n".format(
       xUse, yUse, finalTNOphotPS1[0], finalTNOphotPS1[1], zptGood))
 outfile.write("\nFINAL (calibrated) RESULT!")
 outfile.write("\n#{0:12} {1:13} {2:13} {3:13} {4:13}\n".format(
               '   x ', '    y ', ' magnitude ', '  dmagnitude ', ' magzero '))
-outfile.write("{0:13.8f} {1:13.8f} {2:13.10f} {3:13.10f} {4:13.10f}\n".format(
+outfile.write("{0:13.8f} {1:13.8f} {2:} {3:} {4:}\n".format(
               xUse, yUse, finalTNOphotPS1[0], finalTNOphotPS1[1], zptGood))
 
 TNOCoords = WCS.all_pix2world(xUse, yUse, 1)
@@ -373,12 +371,14 @@ saveStarMag(inputFile, finalCat, timeNow, __version__,
 #if centroid and (('e' in centroidUsed) or ('E' in centroidUsed) or
 #                 ('s' in centroidUsed) or ('S' in centroidUsed)):
 #  remove = True
+
 removeTSF(data, xUse, yUse, TNOPhot.bg, goodPSF, NAXIS1, NAXIS2, header,
           inputName, outfile=outfile, repfact=repfact, remove=remove,
           fitPars=fitPars)
 
 #Run function to save photometry in MPC format
-pix2MPC(WCS, EXPTIME, MJD, finalTNOphotPS1[0], xUse, yUse, FILTER, extno)
+pix2MPC(WCS, EXPTIME, MJD, np.nanmean(finalTNOphotPS1[0]),
+        xUse, yUse, FILTER, extno)
 
 print('Done with ' + inputFile + '!')
 outfile.close()
