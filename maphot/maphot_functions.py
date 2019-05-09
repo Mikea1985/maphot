@@ -24,10 +24,10 @@ from __future__ import print_function, division
 import os
 import getopt
 import sys
-from six.moves import input
-import numpy as np
 import pylab as pyl
 import mp_ephem
+from six.moves import input
+import numpy as np
 import requests
 import astropy.io.fits as pyf
 from astropy.visualization import interval
@@ -189,7 +189,7 @@ def coordRateAngle(orbit, MJDate, WCS, obs_code=568):
 
 
 def writeSExParFiles(imageFileName, minArea, threshold, zpt, aperture,
-                     kron_factor, min_radius, extno=None):
+                     kron_factor, min_radius, extno=None, verbose=False):
   '''
   This writes a Source Extractor parameter file.
   '''
@@ -210,11 +210,17 @@ def writeSExParFiles(imageFileName, minArea, threshold, zpt, aperture,
                               zpt=zpt, aperture=aperture,
                               kron_factor=kron_factor, min_radius=min_radius,
                               catalogType='FITS_LDAC', saturate=120000)
+  if verbose:
+    scamp.makeParFiles.writeSex(sexFile + '2',
+                                minArea=minArea, threshold=threshold,
+                                zpt=zpt, aperture=aperture,
+                                kron_factor=kron_factor, min_radius=min_radius,
+                                catalogType='ASCII', saturate=120000)
   scamp.makeParFiles.writeConv()
   scamp.makeParFiles.writeParam('def.param', numAps=1)
 
 
-def runSExtractor(imageFileName, SExParams, extno=None):
+def runSExtractor(imageFileName, SExParams, extno=None, verbose=False):
   '''  Run Source Extractor. Provide a useful error if it fails.
   '''
   if extno is None:
@@ -231,6 +237,9 @@ def runSExtractor(imageFileName, SExParams, extno=None):
   try:
     scamp.runSex(SExtractorFile, imageFNE,
                  options={'CATALOG_NAME': catalogFile})
+    if verbose:
+      scamp.runSex(SExtractorFile + '2', imageFNE,
+                   options={'CATALOG_NAME': catalogFile + '2'})
     fullcatalog = scamp.getCatalog(catalogFile, paramFile='def.param')
   except IOError as error:
     raise IOError('\n{}\nYou have almost certainly forgotten '.format(error) +
@@ -250,7 +259,8 @@ def getSExCatalog(imageFileName, SExParams, extno=None, verb=True):
   try:
     fullcatalog = scamp.getCatalog(catalogFile, paramFile='def.param')
   except IOError:
-    fullcatalog = runSExtractor(imageFileName, SExParams, extno=extno)
+    fullcatalog = runSExtractor(imageFileName, SExParams, extno=extno,
+                                verbose=verb)
   except UnboundLocalError:
     print("\nData error occurred!\n")
     raise

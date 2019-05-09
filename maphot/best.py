@@ -23,6 +23,18 @@ from __version__ import __version__
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
 
+## To adjust how strick trimming happens adjust these:
+# PSF_Kron in the readPanSTARRS call:
+#  limit difference between PSF and Kron mags (Galaxies have larger difference)
+# maxDist in PS1_vs_SEx call:
+#  limit to distance (") between PS1 and SEx coords
+# dcut, mcut, snrcut and shapecut in trimCatalog call:
+#  dcut; lower limit on distance to nearest neighbour.
+#  mcut: maximum pixel valued allowed (should be below saturation value)
+#  snrcut: lower limit for SNR of stars
+#  shapecut: uper limit on A/B (long axis/short axis)
+# rad_deg in queryPanSTARRS call:
+#  radius of circle to get PS1 catalog for.
 
 def findBestImage(imageArray,
                   SEx_params=np.array([2.0, 2.0, 27.8, 10.0, 2.0, 2.0]),
@@ -61,7 +73,7 @@ def findBestImage(imageArray,
     print("No frames had MAGZERO keyword." if verbose else "")
     bestZeroID = np.argmax(fluxlim)
   bestFullCatalogue = getSExCatalog(imageArray[bestZeroID] + '.fits',
-                                    SEx_params, extno=extno)
+                                    SEx_params, extno=extno, verb=verbose)
   print("Image" + str(bestZeroID) + " is best.")
   return bestZeroID, bestFullCatalogue
 
@@ -78,7 +90,7 @@ def getAllCatalogues(imageArray,
   catalogueArray = []
   for ii, dummy in enumerate(imageArray):
     catalogueArray.append(getSExCatalog(imageArray[ii] + '.fits', SEx_params,
-                                        extno=extno))
+                                        extno=extno, verb=verbose))
   print((len(catalogueArray), len(catalogueArray[0])) if verbose else "")
   return catalogueArray
 
@@ -166,12 +178,12 @@ def PanSTARRSStuff(SExCatalogArray, bestID):
   RADecString = '{0:05.1f}_{1:+4.1f}'.format(obsRA, obsDec)
   try:
     PS1Catalog = readPanSTARRS('panstarrs_' + RADecString + '.xml',
-                               PSF_Kron=0.4)
+                               PSF_Kron=0.6)
   except IOError:
     queryPanSTARRS(obsRA, obsDec, rad_deg=0.3,
                    catalog_filename='panstarrs_' + RADecString + '.xml')
     PS1Catalog = readPanSTARRS('panstarrs_' + RADecString + '.xml',
-                               PSF_Kron=0.4)
+                               PSF_Kron=0.6)
   print('A Pan-STARRS catalog has been loaded with '
         + '{} entries.'.format(len(PS1Catalog)))
   #Match the PS1 sources to the SExtractor catalog. Only keep matched pairs.
@@ -194,20 +206,25 @@ def best(imageArray, repfactor, **kwargs):
   print(imageArray if verbose else "")
   #bestID, bestSExCat = findBestImage(imageArray, extno=extno)
   #print(bestID if verbose else "")
-  catalogueArray = getAllCatalogues(imageArray, extno=extno)
+  catalogueArray = getAllCatalogues(imageArray, extno=extno, verbose=verbose)
   nCatMembers = [len(cat['XWIN_IMAGE']) for cat in catalogueArray]
   bestID = np.argmax(nCatMembers)
   bestSExCat = catalogueArray[bestID]
   (bestData, _, _, _, _, MJDm, _, NAXIS1, NAXIS2, _, _, INS
    ) = getDataHeader(imageArray[bestID] + '.fits', extno=extno)
   teles = 'LBT'
+  mcut = 55000
   if INS == 'GMOS-N':
     teles = 'Gemini'
-  print("The best image is {}".format(imageArray[bestID]))
-  bestSExCatTrimmed = trimCatalog(bestSExCat, bestData, dcut=30, mcut=55000,
+    mcut = 135000
+  print("The best image is {}".format(imageArray[bestID]) +
+        " with {} SExtractor detections.".format(len(bestSExCat['MAG_AUTO'])))
+  bestSExCatTrimmed = trimCatalog(bestSExCat, bestData, dcut=0, mcut=mcut,
                                   snrcut=0, shapecut=5,  # basically no cuts
                                   naxis1=NAXIS1, naxis2=NAXIS2,
                                   telescope=teles)
+  print("{}".format(len(bestSExCatTrimmed['MAG_AUTO'])) +
+        " SExtractor sources left after trimming garbage.")
   catalogueArray[bestID] = bestSExCatTrimmed  # lazy workaround
   PS1SharedCat = PanSTARRSStuff(catalogueArray, bestID)
   print('{}'.format(len(PS1SharedCat)) +

@@ -163,7 +163,7 @@ except IOError:
   print('If not, run best.best([fitsList]).')
   raise IOError(bestCatName + ' missing. Run best.best')
 # Match phot stars to PS1 catalog
-catalog_psf = PS1_vs_SEx(bestCat, fullSExCat, maxDist=1.0, appendSEx=True)
+catalog_psf = PS1_vs_SEx(bestCat, fullSExCat, maxDist=2.5, appendSEx=True)
 
 # Restore PSF if exist, otherwise build it.
 try:
