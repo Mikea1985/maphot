@@ -742,7 +742,6 @@ def inspectStars(data, catalogue, repfactor, **kwargs):
      ) = starChooser(30, 0,  # (box size, min SNR)
                      initAlpha=3., initBeta=3.,
                      repFact=repfactor,
-                     includeCheesySaturationCut=False,
                      noVisualSelection=noVisualSelection,
                      verbose=False, printStarInfo=True, saveFigure=True)
     print(("\ngoodFits = ", goodFits, "\n") if verbose else "")
