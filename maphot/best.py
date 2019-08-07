@@ -241,7 +241,7 @@ def best(imageArray, repfactor, **kwargs):
                 timeNow, __version__, MJDm, None, extno=extno)
   inspectedSExCat = inspectStars(bestData, bestSharedPS1SExCat[:],
                                  repfactor, SExCatalogue=True,
-                                 noVisualSelection=False)
+                                 noVisualSelection=False, quickFit=True)
   try:
     os.rename('psfStarChooser.png', 'best_psfStarChooser.png')
   except:

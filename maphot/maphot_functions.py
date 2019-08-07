@@ -730,6 +730,7 @@ def inspectStars(data, catalogue, repfactor, **kwargs):
   SExCatalogue = kwargs.pop('SExCatalogue', False)
   noVisualSelection = kwargs.pop('noVisualSelection', False)
   verbose = kwargs.pop('verbose', False)
+  quickFit = kwargs.pop('quickFit', False)
   if kwargs:
     raise TypeError('Unexpected **kwargs: %r' % kwargs)
   print(np.shape(data))
@@ -741,7 +742,7 @@ def inspectStars(data, catalogue, repfactor, **kwargs):
     (goodFits, goodMeds, goodSTDs
      ) = starChooser(30, 0,  # (box size, min SNR)
                      initAlpha=3., initBeta=3.,
-                     repFact=repfactor,
+                     repFact=repfactor, quickFit=quickFit,
                      noVisualSelection=noVisualSelection,
                      verbose=False, printStarInfo=True, saveFigure=True)
     print(("\ngoodFits = ", goodFits, "\n") if verbose else "")
