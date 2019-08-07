@@ -519,6 +519,8 @@ def saveStarMag(image_fn, finalCat, timeNow, version, headerMJD, sigmaclip=None,
     print('Using all of the stars.')
   else:
     print('*** WARNING!!! Using sigma clipping! ***')
+    print('** Check whether this is appropriate! **')
+    print('*** WARNING!!! Using sigma clipping! ***')
   starFile = open(starFileName, 'w')
   starFile.write('#Run time: {}\n'.format(timeNow))
   starFile.write('#Image name and MJD: {} {}\n'.format(image_fn, headerMJD))
@@ -742,7 +744,7 @@ def inspectStars(data, catalogue, repfactor, **kwargs):
                      repFact=repfactor,
                      includeCheesySaturationCut=False,
                      noVisualSelection=noVisualSelection,
-                     verbose=False)
+                     verbose=False, printStarInfo=True, saveFigure=True)
     print(("\ngoodFits = ", goodFits, "\n") if verbose else "")
     print(("\ngoodMeds = ", goodMeds, "\n") if verbose else "")
     print(("\ngoodSTDs = ", goodSTDs, "\n") if verbose else "")

@@ -24,6 +24,7 @@ in order to predict the location in that image.
 """
 
 from __future__ import print_function, division
+import os
 import sys
 from datetime import datetime
 import warnings
@@ -215,6 +216,11 @@ except UnboundLocalError:
   print("Data error occurred!")
   outfile.write("\nData error occured!\n")
   raise
+
+try:
+  os.rename('psfStarChooser.png', inputName + '_psfStarChooser.png')
+except OSError:
+  pass
 
 dAperCorr = 0.01
 print("tnoAperCorr, starAperCorr = ", tnoAperCorr, starAperCorr, "\n")

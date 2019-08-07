@@ -8,6 +8,7 @@ Module for:
 
 from __future__ import print_function, division
 import getopt
+import os
 import sys
 from datetime import datetime
 import warnings
@@ -241,6 +242,10 @@ def best(imageArray, repfactor, **kwargs):
   inspectedSExCat = inspectStars(bestData, bestSharedPS1SExCat[:],
                                  repfactor, SExCatalogue=True,
                                  noVisualSelection=False)
+  try:
+    os.rename('psfStarChooser.png', 'best_psfStarChooser.png')
+  except:
+    pass
   inspectedPS1Cat = findSharedPS1Catalogue([PS1SharedCat, inspectedSExCat])
   saveStarMag('InspectedStars.txt', inspectedPS1Cat,
               timeNow, __version__, 'All images', None, extno=extno)
