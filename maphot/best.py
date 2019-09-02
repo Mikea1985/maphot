@@ -8,6 +8,7 @@ Module for:
 
 from __future__ import print_function, division
 import getopt
+import io
 import os
 import sys
 from datetime import datetime
@@ -169,7 +170,7 @@ def unpickleCatalogue(filename, **kwargs):
   return catalogue
 
 
-def PanSTARRSStuff(SExCatalogArray, bestID):
+def PanSTARRSStuff(SExCatalogArray, bestID, verbose=False):
   """Load the PS1 catalogue, identify PS1 stars in the SExtractor catalog.
   """
   #Get the PS1 catalog for the area around the TNO.
@@ -192,6 +193,15 @@ def PanSTARRSStuff(SExCatalogArray, bestID):
   for SExCatalog in SExCatalogArray:
     PS1CatArray.append(PS1_vs_SEx(PS1Catalog, SExCatalog, maxDist=2.5,
                                   appendSEx=False))
+#                                  ))
+  if verbose:
+    for i, PC in enumerate(PS1CatArray):
+      sf = io.open('PS1Cat{}.cat'.format(i), 'w')
+      sf.write(u'PS1_Name\tRA(SEx)\tDec(SEx)\tRA(PS1)\tDec(PS1)\n')
+      [sf.write(u'{}\t{}\t{}\n'.format(PC['raMean'][j], PC['decMean'][j],
+                                       PC['objName'][j]))
+       for j in np.arange(len(PC['objName']))]
+      sf.close()
   PS1SharedCat = findSharedPS1Catalogue(PS1CatArray)
   return PS1SharedCat
 
@@ -227,7 +237,7 @@ def best(imageArray, repfactor, **kwargs):
   print("{}".format(len(bestSExCatTrimmed['MAG_AUTO'])) +
         " SExtractor sources left after trimming garbage.")
   catalogueArray[bestID] = bestSExCatTrimmed  # lazy workaround
-  PS1SharedCat = PanSTARRSStuff(catalogueArray, bestID)
+  PS1SharedCat = PanSTARRSStuff(catalogueArray, bestID, verbose=verbose)
   print('{}'.format(len(PS1SharedCat)) +
         ' PS1 sources are visible in all images.')
   timeNow = datetime.now().strftime('%Y-%m-%d/%H:%M:%S')

@@ -233,7 +233,7 @@ def runSExtractor(imageFileName, SExParams, extno=None, verbose=False):
                                            '{0:02.0f}.sex'.format(extno))
     catalogFile = imageFileName.replace('.fits', '{0:02.0f}.cat'.format(extno))
     imageFNE = imageFileName + '[{}]'.format(extno)
-  writeSExParFiles(imageFileName, *SExParams, extno=extno)
+  writeSExParFiles(imageFileName, *SExParams, extno=extno, verbose=verbose)
   try:
     scamp.runSex(SExtractorFile, imageFNE,
                  options={'CATALOG_NAME': catalogFile})
