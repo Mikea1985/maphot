@@ -22,6 +22,7 @@ in order to predict the location in that image.
 
 from __future__ import print_function, division
 import os
+import io
 import getopt
 import sys
 import pylab as pyl
@@ -71,7 +72,7 @@ def queryPanSTARRS(ra_deg, dec_deg, rad_deg=0.1, mindet=1, maxsources=10000,
 
 
 def readPanSTARRS(catalog_filename='panstarrs.xml', rMin=0, gMin=0,
-                  PSF_Kron=0.5):
+                  PSF_Kron=0.5, verbose=False):
   '''
   Read a PanSTARRS catalog from an xml file.
   Only include objects that have both g and r-band magnitudes.
@@ -79,11 +80,22 @@ def readPanSTARRS(catalog_filename='panstarrs.xml', rMin=0, gMin=0,
   # Read an xml file and parse it into an astropy.table object.
   PS1CatDataFull = parse_single_table(catalog_filename)
   PS1All = PS1CatDataFull.to_table(use_names_over_ids=True)
-  PS1Cat = PS1All[(PS1All['rMeanPSFMag'] > rMin)
-                  & (PS1All['gMeanPSFMag'] > gMin)
-                  & (PS1All['rMeanPSFMag'] - PS1All['rMeanKronMag'] < PSF_Kron)
-                  & (PS1All['gMeanPSFMag']
-                     - PS1All['gMeanKronMag'] < PSF_Kron)]
+  Ktfr = (np.ones_like(PS1All['rMeanPSFMag'], dtype=bool) if PSF_Kron is None
+          else (PS1All['rMeanPSFMag'] - PS1All['rMeanKronMag'] < PSF_Kron))
+  Ktfg = (np.ones_like(PS1All['gMeanPSFMag'], dtype=bool) if PSF_Kron is None
+          else (PS1All['gMeanPSFMag'] - PS1All['gMeanKronMag'] < PSF_Kron))
+  magtfr = (PS1All['rMeanPSFMag'] > rMin)
+  magtfg = (PS1All['gMeanPSFMag'] > gMin)
+  alltf = magtfr & magtfg & Ktfr & Ktfg
+  PS1Cat = PS1All[alltf]
+  if verbose:
+    nPS1 = len(PS1All['raMean'])
+    print('Of {} PS1 stars,\n'.format(nPS1) +
+          '{} did not have r-band PSF mag,\n'.format(nPS1 - sum(magtfr)) +
+          '{} did not have g-band PSF mag,\n'.format(nPS1 - sum(magtfg)) +
+          '{} did not meet r-band PSF-Kron limit,\n'.format(nPS1 - sum(Ktfr)) +
+          '{} did not meet g-band PSF-Kron limit,\n'.format(nPS1 - sum(Ktfg)) +
+          'leaving just {} useful PS1 stars.'.format(len(PS1Cat['raMean'])))
   return PS1Cat
 
 
@@ -110,7 +122,7 @@ def PS1_vs_SEx(PS1Cat, SExCat, maxDist=1, appendSEx=True):
 
 
 def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut, naxis1, naxis2,
-                telescope=None):
+                instrument=None, verbose=False):
   """trimCatalog trims the SExtractor catalogue of non-roundish things,
   really bright things and things that are near other things.
   cat = the full catalogue from SExtractor.
@@ -121,6 +133,7 @@ def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut, naxis1, naxis2,
   naxis1, naxis2 = dimensions of the CCD/image.
   """
   good = []
+  rejected = io.open('rejected_stars.txt', 'w') if verbose else ""
   for ii in range(len(cat['XWIN_IMAGE'])):
     try:
       a = int(cat['XWIN_IMAGE'][ii])
@@ -135,19 +148,29 @@ def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut, naxis1, naxis2,
     d = distance[1]
     snrs = cat['FLUX_AUTO'][ii] / cat['FLUXERR_AUTO'][ii]
     shape = cat['AWIN_IMAGE'][ii] / cat['BWIN_IMAGE'][ii]
-    if (cat['FLAGS'][ii] == 0
-       and d > dcut
-       and m < mcut
-       and snrs > snrcut
-       and shape < shapecut
-       and xi > dcut + 1 and xi < naxis1 - dcut - 1
-       and yi > dcut + 1 and yi < naxis2 - dcut - 1):
-         if telescope == 'Gemini':
-           if (xi > 1046 + 1 + dcut and xi < 2064 - dcut - 1
-               and yi > 13 and yi < 2271):
-             good.append(ii)
-         else:
-             good.append(ii)
+    flagtf = (cat['FLAGS'][ii] < 4)
+    disttf = (d > dcut)
+    mtf = (m < mcut)
+    snrtf = (snrs > snrcut)
+    shapetf = (shape < shapecut)
+    xytf = (xi > dcut + 1 and xi < naxis1 - dcut - 1
+            and yi > dcut + 1 and yi < naxis2 - dcut - 1)
+    if flagtf and disttf and mtf and snrtf and shapetf and xytf:
+      if (instrument == 'GMOS-N') or (instrument == 'GMOS-S'):
+        if (xi > 1046 + 1 + dcut and xi < 2064 - dcut - 1
+            and yi > 13 and yi < 2271):
+          good.append(ii)
+        else:
+          rejected.write(u'Star at {}, {} trimmed: '.format(xi, yi) +
+                         u'not on central chip.\n') if verbose else ""
+      else:
+          good.append(ii)
+    else:
+      rejected.write(u'Star at {}, {} trimmed: Flag {}'.format(xi, yi, flagtf) +
+                     u'dist {}, m {}, snr {}, '.format(disttf, mtf, snrtf) +
+                     u'shape {}, xy {}.\n'.format(shapetf, xytf)
+                     ) if verbose else ""
+  rejected.close() if verbose else ""
   good = np.array(good)
   outcat = {}
   for ii in cat:
@@ -265,8 +288,8 @@ def getSExCatalog(imageFileName, SExParams, extno=None, verb=True):
     print("\nData error occurred!\n")
     raise
   ncat = len(fullcatalog['XWIN_IMAGE'])
-  print("\n" + str(ncat) +
-        " sources in Source Extractor catalog\n" if verb else "")
+  print(str(ncat) + " sources in Source Extractor catalog\n"
+        if verb else "", end="")
   return fullcatalog
 
 

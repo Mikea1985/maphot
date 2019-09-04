@@ -104,10 +104,12 @@ def getArguments(sysargv):
   verbose = False
   ignoreWarns = False
   extno = None
+  PSF_Kron = None
   try:
-    options, dummy = getopt.getopt(sysargv[1:], "f:v:h:r:e:i:",
+    options, dummy = getopt.getopt(sysargv[1:], "f:v:h:r:e:i:k:",
                                    ["filenamefile=", "verbose=", "repfactor=",
-                                    "extension=", "ignoreWarnings="])
+                                    "extension=", "ignoreWarnings=",
+                                    "PSF_Kron="])
   except TypeError as error:
     print(error)
     sys.exit()
@@ -137,13 +139,15 @@ def getArguments(sysargv):
         repfactor = arg
       elif opt in ('-e', '--extension'):
         extno = int(arg)
+      elif opt in ('-k', '--PSF_Kron'):
+        PSF_Kron = int(arg)
       elif opt in ('-i', '--ignoreWarnings'):
         ignoreWarns = arg
     imageArray = np.array([ia.replace('.fits', '')
                            for ia in np.genfromtxt(filenameFile,
                                                    usecols=(0), dtype=str)])
   print(imageArray)
-  return imageArray, repfactor, verbose, extno, ignoreWarns
+  return imageArray, repfactor, verbose, extno, ignoreWarns, PSF_Kron
 
 
 def pickleCatalogue(catalogue, filename, **kwargs):
@@ -170,7 +174,8 @@ def unpickleCatalogue(filename, **kwargs):
   return catalogue
 
 
-def PanSTARRSStuff(SExCatalogArray, bestID, verbose=False):
+def PanSTARRSStuff(SExCatalogArray, bestID, verbose=False,
+                   radius=0.3, PSF_Kron=0.6):
   """Load the PS1 catalogue, identify PS1 stars in the SExtractor catalog.
   """
   #Get the PS1 catalog for the area around the TNO.
@@ -180,12 +185,12 @@ def PanSTARRSStuff(SExCatalogArray, bestID, verbose=False):
   RADecString = '{0:05.1f}_{1:+4.1f}'.format(obsRA, obsDec)
   try:
     PS1Catalog = readPanSTARRS('panstarrs_' + RADecString + '.xml',
-                               PSF_Kron=0.6)
+                               PSF_Kron=PSF_Kron, verbose=verbose)
   except IOError:
-    queryPanSTARRS(obsRA, obsDec, rad_deg=0.3,
+    queryPanSTARRS(obsRA, obsDec, rad_deg=radius,
                    catalog_filename='panstarrs_' + RADecString + '.xml')
     PS1Catalog = readPanSTARRS('panstarrs_' + RADecString + '.xml',
-                               PSF_Kron=0.6)
+                               PSF_Kron=PSF_Kron, verbose=verbose)
   print('A Pan-STARRS catalog has been loaded with '
         + '{} entries.'.format(len(PS1Catalog)))
   #Match the PS1 sources to the SExtractor catalog. Only keep matched pairs.
@@ -193,11 +198,16 @@ def PanSTARRSStuff(SExCatalogArray, bestID, verbose=False):
   for SExCatalog in SExCatalogArray:
     PS1CatArray.append(PS1_vs_SEx(PS1Catalog, SExCatalog, maxDist=2.5,
                                   appendSEx=False))
-#                                  ))
   if verbose:
+    with io.open('PS1CatKronTrim.cat', 'w') as sf:
+      sf.write(u'RA(PS1)\tDec(PS1)\tPS1_name\n')
+      [sf.write(u'{}\t{}\t{}\n'.format(PS1Catalog['raMean'][j],
+                                       PS1Catalog['decMean'][j],
+                                       PS1Catalog['objName'][j]))
+       for j in np.arange(len(PS1Catalog['objName']))]
     for i, PC in enumerate(PS1CatArray):
       sf = io.open('PS1Cat{}.cat'.format(i), 'w')
-      sf.write(u'PS1_Name\tRA(SEx)\tDec(SEx)\tRA(PS1)\tDec(PS1)\n')
+      sf.write(u'RA(PS1)\tDec(PS1)\tPS1_name\n')
       [sf.write(u'{}\t{}\t{}\n'.format(PC['raMean'][j], PC['decMean'][j],
                                        PC['objName'][j]))
        for j in np.arange(len(PC['objName']))]
@@ -209,35 +219,50 @@ def PanSTARRSStuff(SExCatalogArray, bestID, verbose=False):
 def best(imageArray, repfactor, **kwargs):
   """This function can be run to do all of the above.
   This is called automatically if this is main."""
-  extno = kwargs.pop('extno', None)
-  verbose = kwargs.pop('verbose', False)
+  extno = kwargs.pop('extno', None)  # Extension number for multi-ext fits
+  PSF_Kron = kwargs.pop('PSF_Kron', None)  # PSF-Kron mag diff limit
+  verbose = kwargs.pop('verbose', False)  # print/save more things?
   if kwargs:
     raise TypeError('Unexpected **kwargs: %r' % kwargs)
-  print(__version__ if verbose else "")
-  print(imageArray if verbose else "")
-  #bestID, bestSExCat = findBestImage(imageArray, extno=extno)
-  #print(bestID if verbose else "")
+  # If verbose, print some stuff
+  print("{}\n".format(__version__) if verbose else "", end="")
+  print("{}\n".format(imageArray) if verbose else "", end="")
+  # Get all the SExtractor catalogues
   catalogueArray = getAllCatalogues(imageArray, extno=extno, verbose=verbose)
   nCatMembers = [len(cat['XWIN_IMAGE']) for cat in catalogueArray]
-  bestID = np.argmax(nCatMembers)
+  bestID = np.argmax(nCatMembers)  # Best image has most sources, obviously...
   bestSExCat = catalogueArray[bestID]
-  (bestData, _, _, _, _, MJDm, _, NAXIS1, NAXIS2, _, _, INS
-   ) = getDataHeader(imageArray[bestID] + '.fits', extno=extno)
-  teles = 'LBT'
-  mcut = 55000
-  if INS == 'GMOS-N':
-    teles = 'Gemini'
-    mcut = 135000
   print("The best image is {}".format(imageArray[bestID]) +
         " with {} SExtractor detections.".format(len(bestSExCat['MAG_AUTO'])))
+  mcut = 55000  # Near-saturation level for most imagers
+  (bestData, _, _, _, _, MJDm, _, NAXIS1, NAXIS2, _, _, INS
+   ) = getDataHeader(imageArray[bestID] + '.fits', extno=extno)
+  if INS == 'GMOS-N':
+    mcut = 135000  # Near-saturation level for GMOS
+  # Trim the SExtractor catalog. This automatically removes things near edge,
+  # on non-central chip (GMOS only), saturated stars, as well as very
+  # elongated sources (shapecut), faint sources (snrcut) and sources near
+  # other sources (dcut). By default, dcut, snrcut and shapecut have very lax
+  # constraints, so as to not accidentally remove too much.
   bestSExCatTrimmed = trimCatalog(bestSExCat, bestData, dcut=0, mcut=mcut,
                                   snrcut=0, shapecut=5,  # basically no cuts
                                   naxis1=NAXIS1, naxis2=NAXIS2,
-                                  telescope=teles)
+                                  instrument=INS, verbose=verbose)
   print("{}".format(len(bestSExCatTrimmed['MAG_AUTO'])) +
         " SExtractor sources left after trimming garbage.")
-  catalogueArray[bestID] = bestSExCatTrimmed  # lazy workaround
-  PS1SharedCat = PanSTARRSStuff(catalogueArray, bestID, verbose=verbose)
+  if verbose:  # Save the trimmed SExtractor catalog for best image
+    with io.open('SExCatBestTrim.cat', 'w') as sf:
+      sf.write(u'RA(SEx)\tDec(SEx)\tX(SEx)\tY(SEx)\n')
+      [sf.write(u'{}\t{}\t{}\t{}\n'.format(bestSExCatTrimmed['X_WORLD'][j],
+                                           bestSExCatTrimmed['Y_WORLD'][j],
+                                           bestSExCatTrimmed['XWIN_IMAGE'][j],
+                                           bestSExCatTrimmed['YWIN_IMAGE'][j]))
+       for j in np.arange(len(bestSExCatTrimmed['X_WORLD']))]
+  # Lazy workaround: replace full SEx cat of best image with trimmed cat:
+  catalogueArray[bestID] = bestSExCatTrimmed
+  # Now download PS1 catalogue and identify stars in the SEx cat:
+  PS1SharedCat = PanSTARRSStuff(catalogueArray, bestID, verbose=verbose,
+                                radius=0.3, PSF_Kron=PSF_Kron)
   print('{}'.format(len(PS1SharedCat)) +
         ' PS1 sources are visible in all images.')
   timeNow = datetime.now().strftime('%Y-%m-%d/%H:%M:%S')
@@ -268,12 +293,14 @@ def best(imageArray, repfactor, **kwargs):
 
 
 if __name__ == '__main__':
-  images, repfact, verbatim, extension, ignoreWarnings = getArguments(sys.argv)
+  (images, repfact, verbatim, extension, ignoreWarnings,
+   kronDifference) = getArguments(sys.argv)
   #Ignore all Python warnings.
   #This is generally a terrible idea, and should be turned off for de-bugging.
   if ignoreWarnings:
     warnings.filterwarnings("ignore")
-  bestImage, bestCat = best(images, repfact, extno=extension, verbose=verbatim)
+  bestImage, bestCat = best(images, repfact, extno=extension, verbose=verbatim,
+                            PSF_Kron=kronDifference)
   print('Best catalogue:')
   print(bestCat)
   print('Best image #: ' + str(bestImage))
