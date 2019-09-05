@@ -158,11 +158,18 @@ def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut, naxis1, naxis2,
     if flagtf and disttf and mtf and snrtf and shapetf and xytf:
       if (instrument == 'GMOS-N') or (instrument == 'GMOS-S'):
         if (xi > 1046 + 1 + dcut and xi < 2064 - dcut - 1
-            and yi > 13 and yi < 2271):
+            and yi > 13 + 1 + dcut and yi < 2271 - dcut - 1):
           good.append(ii)
         else:
           rejected.write(u'Star at {}, {} trimmed: '.format(xi, yi) +
                          u'not on central chip.\n') if verbose else ""
+      elif 'MODS' in instrument:
+        if (xi > 18 + 1 + dcut and xi < 3049 - dcut - 1
+            and yi > 39 + dcut + 1 and yi < 3067 - dcut - 1):
+          good.append(ii)
+        else:
+          rejected.write(u'Star at {}, {} trimmed: '.format(xi, yi) +
+                         u'too near edge.\n') if verbose else ""
       else:
           good.append(ii)
     else:
