@@ -236,7 +236,8 @@ def best(imageArray, repfactor, **kwargs):
         " with {} SExtractor detections.".format(len(bestSExCat['MAG_AUTO'])))
   mcut = 55000  # Near-saturation level for most imagers
   (bestData, _, _, _, _, MJDm, _, NAXIS1, NAXIS2, _, _, INS
-   ) = getDataHeader(imageArray[bestID] + '.fits', extno=extno)
+   ) = getDataHeader(imageArray[bestID] + '.fits', extno=extno,
+                     verbose=verbose)
   if INS == 'GMOS-N':
     mcut = 135000  # Near-saturation level for GMOS
   # Trim the SExtractor catalog. This automatically removes things near edge,

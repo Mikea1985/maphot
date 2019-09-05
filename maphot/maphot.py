@@ -77,7 +77,7 @@ if verbose:
 
 # Read in the image and get the data, header and keywords needed.
 (data, header, EXPTIME, MAGZERO, MJD, MJDm, GAIN, NAXIS1, NAXIS2, WCS, FILTER,
- INST) = getDataHeader(inputFile, extno=extno)
+ INST) = getDataHeader(inputFile, extno=extno, verbose=verbose)
 
 # Which telescope is this?
 teles = 'LBT'

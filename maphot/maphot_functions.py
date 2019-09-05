@@ -44,7 +44,7 @@ __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
 print("You are using maphot version: ", __version__)
 
 
-def queryPanSTARRS(ra_deg, dec_deg, rad_deg=0.1, mindet=1, maxsources=10000,
+def queryPanSTARRS(ra_deg, dec_deg, rad_deg=0.1, mindet=1, maxsources=50000,
                    server=('https://archive.stsci.edu/panstarrs/search.php'),
                    catalog_filename='panstarrs.xml'):
   '''
@@ -691,7 +691,7 @@ def addTrippyToCat(catphotA, magStars, dmagStars, fluxStars, SNRStars,
   return catphotB
 
 
-def getDataHeader(inputFile, extno=None):
+def getDataHeader(inputFile, extno=None, verbose=False):
   '''Reads in a fits file (or a given extension of one).
   Returns the image data, the header, and a few useful keyword values.'''
   with pyf.open(inputFile) as han:
@@ -703,48 +703,42 @@ def getDataHeader(inputFile, extno=None):
       data = han[extno].data
       header = han[extno].header
       header0 = han[0].header
-    try:
-      EXPTIME = header['EXPTIME']
-    except KeyError:
-      EXPTIME = header0['EXPTIME']
-    try:
-      MAGZERO = header['MAGZERO']  # Subaru Hyper-Suprime, LBT
-    except KeyError:
-      try:
-        MAGZERO = header['PHOT_C']   # CFHT MegaCam
-      except KeyError:
-        MAGZERO = 27.8  # Gemini has no keyword for zero point, oddly. 
-    try:
-      MJD = header['MJD']  # Subaru
-    except:
-      try:
-        MJD = header['MJDATE']  # CFHT
-      except:
-        try:
-          MJD = header['MJD-OBS']  # Gemini/CFHT
-        except:
-          MJD = header0['MJD_OBS']  # LBT
-    MJDmid = MJD + EXPTIME / 172800.0
-    try:
-      GAIN = header['GAINEFF']  # Subaru/LBT
-    except:
-      GAIN = header['GAIN']  # CFHT
-    NAXIS1 = header['NAXIS1'] if header['NAXIS1'] > 128 else header['ZNAXIS1']
-    NAXIS2 = header['NAXIS2'] if header['NAXIS2'] > 128 else header['ZNAXIS2']
-    try:
-      FILTER = header['FILTER2'][0]  # Gemini
-    except:
-      try:
-        FILTER = header0['FILTER2']  # Gemini
-      except:
-        try:
-          FILTER = header['FILTER'][0]  # CFHT/Subaru
-        except:
-          FILTER = header0['FILTER'][0]  # LBT
   WCS = wcs.WCS(header)
   INST = header0['INSTRUME']  # Gemini, CFHT, Subaru, LBT
+  if 'MODS' in INST:  # LBT MODS
+    keys = ['EXPTIME', 27.8, 'MJD-OBS', 'GAINDL', 'FILTNAME']
+  elif 'LBC' in INST:  # LBT LBC
+    keys = ['EXPTIME', 27.8, 'MJD_OBS', 'GAIN', 'FILTER']
+  elif INST == 'GMOS-N':  # Gemini N GMOS
+    keys = ['EXPTIME', 27.8, 'MJD-OBS', 'GAINMULT', 'FILTER2']
+  elif INST == 'MegaPrime':  # CFHT MegaPrime
+    keys = ['EXPTIME', 'PHOT_C', 'MJD-OBS', 'GAIN', 'FILTER']
+  elif INST == 'Hyper Suprime-Cam':  # Subaru HSC
+    keys = ['EXPTIME', 'MAGZERO', 'MJD-STR', 'GAINEFF', 'FILTER']
+  else:
+    raise NameError('Instrument {} not recognised.'.format(INST))
+  k1 = keys[1]
+  EXPTIME = keyValue(header, header0, keys[0])
+  MAGZERO = keyValue(header, header0, k1) if type(k1) == str else k1
+  MJD = keyValue(header, header0, keys[2])
+  GAIN = keyValue(header, header0, keys[3])
+  FILTER = keyValue(header, header0, keys[4])[0]  # Just want first character
+  MJDmid = MJD + EXPTIME / 172800.0
+  NAXIS1 = header['NAXIS1'] if header['NAXIS1'] > 128 else header['ZNAXIS1']
+  NAXIS2 = header['NAXIS2'] if header['NAXIS2'] > 128 else header['ZNAXIS2']
+  print('{}\n'.format((EXPTIME, MAGZERO, MJD, GAIN, FILTER, MJDmid, NAXIS1,
+                       NAXIS2, INST)) if verbose else '', end='')
   return(data, header, EXPTIME, MAGZERO, MJD, MJDmid,
          GAIN, NAXIS1, NAXIS2, WCS, FILTER, INST)
+
+
+def keyValue(head_first, head_then, key):
+  """First checks one header for a keyword; if fails, check second header."""
+  try:
+    value = head_first[key]
+  except KeyError:
+    value = head_then[key]
+  return value
 
 
 def inspectStars(data, catalogue, repfactor, **kwargs):
