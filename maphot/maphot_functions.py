@@ -166,9 +166,9 @@ def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut, naxis1, naxis2,
       else:
           good.append(ii)
     else:
-      rejected.write(u'Star at {}, {} trimmed: Flag {}'.format(xi, yi, flagtf) +
-                     u'dist {}, m {}, snr {}, '.format(disttf, mtf, snrtf) +
-                     u'shape {}, xy {}.\n'.format(shapetf, xytf)
+      rejected.write(u'Star at {}, {} trimmed: Flag {}'.format(xi, yi, flagtf)
+                     + u'dist {}, m {}, snr {}, '.format(disttf, mtf, snrtf)
+                     + u'shape {}, xy {}.\n'.format(shapetf, xytf)
                      ) if verbose else ""
   rejected.close() if verbose else ""
   good = np.array(good)
@@ -527,8 +527,8 @@ def saveTNOMag2(image_fn, mpc_fn, obsMJD, SExTNOCoord, x_tno, y_tno,
   return
 
 
-def saveStarMag(image_fn, finalCat, timeNow, version, headerMJD, sigmaclip=None,
-                extno=None):
+def saveStarMag(image_fn, finalCat, timeNow, version, headerMJD,
+                sigmaclip=None, extno=None):
   '''Save the star magnitudes and other information.'''
   if extno is None:
     print('Warning: Treating this as a single extension file.')
@@ -551,7 +551,7 @@ def saveStarMag(image_fn, finalCat, timeNow, version, headerMJD, sigmaclip=None,
   starFile.write('#{}'.format(sigmaclip).replace('\n', '') + '\n')
   starFile.write(''.join(['{}\t'.format(keyi) for keyi in finalCat.keys()])
                  + '\n')
-  for i, row in enumerate(finalCat):
+  for row in finalCat:
     starFile.write(''.join(['{}\t'.format(row[keyi])
                             for keyi in finalCat.keys()]) +
                    '\n')
@@ -768,17 +768,17 @@ def inspectStars(data, catalogue, repfactor, **kwargs):
                      repFact=repfactor, quickFit=quickFit,
                      noVisualSelection=noVisualSelection,
                      verbose=False, printStarInfo=True, saveFigure=True)
-    print(("\ngoodFits = ", goodFits, "\n") if verbose else "")
-    print(("\ngoodMeds = ", goodMeds, "\n") if verbose else "")
-    print(("\ngoodSTDs = ", goodSTDs, "\n") if verbose else "")
+    print("\ngoodFits = {}\n".format(goodFits) if verbose else "", end='')
+    print("\ngoodMeds = {}\n".format(goodMeds) if verbose else "", end='')
+    print("\ngoodSTDs = {}\n".format(goodSTDs) if verbose else "", end='')
     goodPSF = psf.modelPSF(np.arange(61), np.arange(61), alpha=goodMeds[2],
                            beta=goodMeds[3], repFact=repfactor)
-    fwhm = goodPSF.FWHM()  # this is the pure moffat FWHM
-    print("fwhm = " + str(fwhm) if verbose else "")
+    fwhm = goodPSF.FWHM(fromMoffatProfile=True)  # the pure moffat FWHM
+    print("fwhm = {}\n".format(fwhm) if verbose else "", end='')
     goodPSF.genLookupTable(data, goodFits[:, 4], goodFits[:, 5], verbose=False)
     goodPSF.genPSF()
     fwhm = goodPSF.FWHM()  # this is the FWHM with lookuptable included
-    print("fwhm = " + str(fwhm) if verbose else "")
+    print("fwhm = {}\n".format(fwhm) if verbose else "", end='')
   except UnboundLocalError:
     print("Data error occurred!")
     raise
