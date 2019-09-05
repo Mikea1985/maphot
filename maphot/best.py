@@ -174,14 +174,12 @@ def unpickleCatalogue(filename, **kwargs):
   return catalogue
 
 
-def PanSTARRSStuff(SExCatalogArray, bestID, verbose=False,
+def PanSTARRSStuff(SExCatalogArray, obsRA, obsDec, verbose=False,
                    radius=0.3, PSF_Kron=0.6):
   """Load the PS1 catalogue, identify PS1 stars in the SExtractor catalog.
   """
   #Get the PS1 catalog for the area around the TNO.
   #Only do this if the catalog hasn't already been downloaded once.
-  obsRA = np.nanmedian(SExCatalogArray[bestID]['X_WORLD'])
-  obsDec = np.nanmedian(SExCatalogArray[bestID]['Y_WORLD'])
   RADecString = '{0:05.1f}_{1:+4.1f}'.format(obsRA, obsDec)
   try:
     PS1Catalog = readPanSTARRS('panstarrs_' + RADecString + '.xml',
@@ -216,6 +214,22 @@ def PanSTARRSStuff(SExCatalogArray, bestID, verbose=False,
   return PS1SharedCat
 
 
+def calcRadius(WCS, NAXIS1, NAXIS2):
+  '''Calculate the radius of the field (half maximum corner seperation).'''
+  rac, decc = WCS.all_pix2world([0, 0, NAXIS1, NAXIS1],
+                                [0, NAXIS2, NAXIS2, 0], 0)
+  centRA = np.mean(rac)
+  centDec = np.mean(decc)
+  d = []
+  for i in np.arange(4):
+    for j in np.arange(4):
+      if i != j:
+        d.append(((rac[i] - rac[j]) ** 2 + (decc[i] - decc[j]) ** 2) ** 0.5)
+  dmax = np.max(d) * 0.5
+  print('Field radius = {} degrees.'.format(dmax))
+  return dmax, centRA, centDec
+
+
 def best(imageArray, repfactor, **kwargs):
   """This function can be run to do all of the above.
   This is called automatically if this is main."""
@@ -235,7 +249,7 @@ def best(imageArray, repfactor, **kwargs):
   print("The best image is {}".format(imageArray[bestID]) +
         " with {} SExtractor detections.".format(len(bestSExCat['MAG_AUTO'])))
   mcut = 55000  # Near-saturation level for most imagers
-  (bestData, _, _, _, _, MJDm, _, NAXIS1, NAXIS2, _, _, INS
+  (bestData, _, _, _, _, MJDm, _, NAXIS1, NAXIS2, WCS, _, INS
    ) = getDataHeader(imageArray[bestID] + '.fits', extno=extno,
                      verbose=verbose)
   if INS == 'GMOS-N':
@@ -261,9 +275,12 @@ def best(imageArray, repfactor, **kwargs):
        for j in np.arange(len(bestSExCatTrimmed['X_WORLD']))]
   # Lazy workaround: replace full SEx cat of best image with trimmed cat:
   catalogueArray[bestID] = bestSExCatTrimmed
+  # Calculate size of field:
+  dmax, centRA, centDec = calcRadius(WCS, NAXIS1, NAXIS2)
   # Now download PS1 catalogue and identify stars in the SEx cat:
-  PS1SharedCat = PanSTARRSStuff(catalogueArray, bestID, verbose=verbose,
-                                radius=0.3, PSF_Kron=PSF_Kron)
+  PS1SharedCat = PanSTARRSStuff(catalogueArray, centRA, centDec,
+                                verbose=verbose, radius=dmax * 1.1,
+                                PSF_Kron=PSF_Kron)
   print('{}'.format(len(PS1SharedCat)) +
         ' PS1 sources are visible in all images.')
   timeNow = datetime.now().strftime('%Y-%m-%d/%H:%M:%S')
