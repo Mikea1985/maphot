@@ -31,13 +31,12 @@ from six.moves import input
 import numpy as np
 import requests
 import astropy.io.fits as pyf
-from astropy.visualization import interval
+from astropy.visualization import interval, ZScaleInterval
 from astropy.io.votable import parse_single_table
 from astropy.table import Column, Table
 from astropy import wcs
 from trippy import scamp, MCMCfit, psf, psfStarChooser
 #from stsci import numdisplay  # pylint: disable=import-error
-from trippy import tzscale as zscale
 from __version__ import __version__
 __author__ = ('Mike Alexandersen (@mikea1985, github: mikea1985, '
               'mike.alexandersen@alumni.ubc.ca)')
@@ -930,7 +929,8 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
                       np.min([NAXIS1 - 1, int(xt) + 5])])
   xt0, yt0 = xt, yt
   while True:  # Breaks once a centroid has been selected.
-    (z1, z2) = zscale.zscale(Zoom)
+    zscale = ZScaleInterval()
+    (z1, z2) = zscale.get_limits(Zoom)
     normer = interval.ManualInterval(z1, z2)
     pyl.imshow(normer(Zoom), origin='lower')
     pyl.plot([zx + x0 - int(xt0)], [zy + y0 - int(yt0)], 'k*', ms=10)
@@ -1039,8 +1039,8 @@ def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
   if fitPars is not None:
     removed = goodPSF.remove(fitPars[0], fitPars[1], fitPars[2],
                              Data, useLinePSF=True)
-    #(z1, z2) = numdisplay.zscale.zscale(removed)
-    (z1, z2) = zscale.zscale(removed)
+    zscale = ZScaleInterval()
+    (z1, z2) = zscale.get_limits(removed)
     normer = interval.ManualInterval(z1, z2)
     modelImage = goodPSF.plant(fitPars[0], fitPars[1], fitPars[2], Data,
                                addNoise=False, useLinePSF=True,
@@ -1061,7 +1061,8 @@ def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
     list = pyf.HDUList([hdu])
     list.writeto(inputName + '_removed.fits', overwrite=True)
   else:
-    (z1, z2) = zscale.zscale(Data)
+    zscale = ZScaleInterval()
+    (z1, z2) = zscale.get_limits(Data)
     normer = interval.ManualInterval(z1, z2)
     if verbose:
       pyl.imshow(normer(goodPSF.lookupTable), origin='lower')
