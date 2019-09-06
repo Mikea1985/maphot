@@ -105,49 +105,76 @@ def getArguments(sysargv):
   ignoreWarns = False
   extno = None
   PSF_Kron = None
+  autoTrim = False
+  snrcut = 0.
+  shapecut = 5.
+  use1 = ('python best.py -f <filenamefile> -e <extension> ' +
+          '-i <ignoreWarnings> -a <autoTrim> -k <PSF-Kron limit>')
+  use2 = ('Defaults:\n' +
+          '-f / --filenamefile=   files.txt\n' +
+          '-v / --verbose=        False\n' +
+          '-r / --repfactor=      10\n' +
+          '-e / --extension=      None (must be integer otherwise)\n' +
+          '-i / --ignoreWarnings= False\n' +
+          '-k / --PSF_Kron=       None (otherwise float)\n' +
+          '-s / --snrcut=         0. \n' +
+          '-p / --shapecut=       5.\n' +
+          '-a / --autoTrim=       False')
   try:
-    options, dummy = getopt.getopt(sysargv[1:], "f:v:h:r:e:i:k:",
+    options, dummy = getopt.getopt(sysargv[1:], "f:v:h:r:e:i:k:a:s:p:",
                                    ["filenamefile=", "verbose=", "repfactor=",
                                     "extension=", "ignoreWarnings=",
-                                    "PSF_Kron="])
+                                    "PSF_Kron=", "autoTrim=",
+                                    "snrcut=", "shapecut="])
   except TypeError as error:
     print(error)
     sys.exit()
   except getopt.GetoptError as error:
     print(" Input ERROR! ")
-    print('best -f <filename>')
+    print(use1)
+    print(use2)
     sys.exit(2)
   else:
     print(options)
     for opt, arg in options:
-      if opt in ("-v", "--verbose", "-i", "--ignoreWarnings"):
+      if opt in ("-v", "--verbose", "-i", "--ignoreWarnings",
+                 "-a", "--autoTrim"):
         if arg == '0' or arg == 'False':
           arg = False
         elif arg == '1' or arg == 'True':
           arg = True
         else:
           print(opt, arg, np.array([arg]).dtype)
-          raise TypeError("-v and -i flags must be followed by " +
+          raise TypeError("-v, -i and -a flags must be followed by " +
                           "0/False/1/True")
       if opt == '-h':
-        print('best -f <filenamefile> -e <extension> -i <ignoreWarnings>')
+        print(use1)
+        print(use2)
+        sys.exit(2)
       elif opt in ('-f', '--filenamefile'):
         filenameFile = arg
-      elif opt in ('-v', '--verbose'):
-        verbose = arg
       elif opt in ('-r', '--repfactor'):
         repfactor = arg
+      elif opt in ('-v', '--verbose'):
+        verbose = arg
       elif opt in ('-e', '--extension'):
         extno = int(arg)
-      elif opt in ('-k', '--PSF_Kron'):
-        PSF_Kron = float(arg)
       elif opt in ('-i', '--ignoreWarnings'):
         ignoreWarns = arg
+      elif opt in ('-k', '--PSF_Kron'):
+        PSF_Kron = float(arg)
+      elif opt in ('-a', '--autoTrim'):
+        autoTrim = arg
+      elif opt in ('-s', '--snrcut'):
+        snrcut = float(arg)
+      elif opt in ('-p', '--shapecut'):
+        shapecut = float(arg)
     imageArray = np.array([ia.replace('.fits', '')
                            for ia in np.genfromtxt(filenameFile,
                                                    usecols=(0), dtype=str)])
   print(imageArray)
-  return imageArray, repfactor, verbose, extno, ignoreWarns, PSF_Kron
+  return (imageArray, repfactor, verbose, extno, ignoreWarns, PSF_Kron,
+          autoTrim, snrcut, shapecut)
 
 
 def pickleCatalogue(catalogue, filename, **kwargs):
@@ -236,6 +263,9 @@ def best(imageArray, repfactor, **kwargs):
   extno = kwargs.pop('extno', None)  # Extension number for multi-ext fits
   PSF_Kron = kwargs.pop('PSF_Kron', None)  # PSF-Kron mag diff limit
   verbose = kwargs.pop('verbose', False)  # print/save more things?
+  autoTrim = kwargs.pop('autoTrim', False)  # use psfStarChooser's autoTrim?
+  snrcut = kwargs.pop('snrcut', 0)  # minimum snr to use star
+  shapecut = kwargs.pop('shapecut', 5)  # maximum axis ratio
   if kwargs:
     raise TypeError('Unexpected **kwargs: %r' % kwargs)
   # If verbose, print some stuff
@@ -260,7 +290,7 @@ def best(imageArray, repfactor, **kwargs):
   # other sources (dcut). By default, dcut, snrcut and shapecut have very lax
   # constraints, so as to not accidentally remove too much.
   bestSExCatTrimmed = trimCatalog(bestSExCat, bestData, dcut=0, mcut=mcut,
-                                  snrcut=0, shapecut=5,  # basically no cuts
+                                  snrcut=snrcut, shapecut=shapecut,
                                   naxis1=NAXIS1, naxis2=NAXIS2,
                                   instrument=INS, verbose=verbose)
   print("{}".format(len(bestSExCatTrimmed['MAG_AUTO'])) +
@@ -294,7 +324,8 @@ def best(imageArray, repfactor, **kwargs):
                 timeNow, __version__, MJDm, None, extno=extno)
   inspectedSExCat = inspectStars(bestData, bestSharedPS1SExCat[:],
                                  repfactor, SExCatalogue=True,
-                                 noVisualSelection=False, quickFit=True)
+                                 noVisualSelection=False, quickFit=True,
+                                 autoTrim=autoTrim)
   try:
     os.rename('psfStarChooser.png', 'best_psfStarChooser.png')
   except:
@@ -311,14 +342,15 @@ def best(imageArray, repfactor, **kwargs):
 
 
 if __name__ == '__main__':
-  (images, repfact, verbatim, extension, ignoreWarnings,
-   kronDifference) = getArguments(sys.argv)
+  (images, repfact, verbatim, extension, ignoreWarnings, kronDifference,
+   automaticTrim, SignalCut, ElongationCut) = getArguments(sys.argv)
   #Ignore all Python warnings.
   #This is generally a terrible idea, and should be turned off for de-bugging.
   if ignoreWarnings:
     warnings.filterwarnings("ignore")
   bestImage, bestCat = best(images, repfact, extno=extension, verbose=verbatim,
-                            PSF_Kron=kronDifference)
+                            PSF_Kron=kronDifference, autoTrim=automaticTrim,
+                            snrcut=SignalCut, shapecut=ElongationCut)
   print('Best catalogue:')
   print(bestCat)
   print('Best image #: ' + str(bestImage))
