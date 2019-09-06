@@ -134,6 +134,8 @@ def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut, naxis1, naxis2,
   """
   good = []
   rejected = io.open('rejected_stars.txt', 'w') if verbose else ""
+  print('Treating as MODS data, trimming edges off.\n'
+        if (verbose and ('MODS' in instrument)) else "", end='')
   for ii in range(len(cat['XWIN_IMAGE'])):
     try:
       a = int(cat['XWIN_IMAGE'][ii])
@@ -153,19 +155,20 @@ def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut, naxis1, naxis2,
     mtf = (m < mcut)
     snrtf = (snrs > snrcut)
     shapetf = (shape < shapecut)
-    xytf = (xi > dcut + 1 and xi < naxis1 - dcut - 1
-            and yi > dcut + 1 and yi < naxis2 - dcut - 1)
+    buffercut = 31
+    xytf = (xi > buffercut and xi < naxis1 - buffercut
+            and yi > buffercut and yi < naxis2 - buffercut)
     if flagtf and disttf and mtf and snrtf and shapetf and xytf:
       if (instrument == 'GMOS-N') or (instrument == 'GMOS-S'):
-        if (xi > 1046 + 1 + dcut and xi < 2064 - dcut - 1
-            and yi > 13 + 1 + dcut and yi < 2271 - dcut - 1):
+        if (xi > 1046 + buffercut and xi < 2064 - buffercut
+            and yi > 13 + buffercut and yi < 2271 - buffercut):
           good.append(ii)
         else:
           rejected.write(u'Star at {}, {} trimmed: '.format(xi, yi) +
                          u'not on central chip.\n') if verbose else ""
       elif 'MODS' in instrument:
-        if (xi > 18 + 1 + dcut and xi < 3049 - dcut - 1
-            and yi > 39 + dcut + 1 and yi < 3067 - dcut - 1):
+        if (xi > 18 + buffercut and xi < 3049 - buffercut
+            and yi > 39 + buffercut and yi < 3067 - buffercut):
           good.append(ii)
         else:
           rejected.write(u'Star at {}, {} trimmed: '.format(xi, yi) +
