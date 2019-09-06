@@ -140,7 +140,7 @@ def getArguments(sysargv):
       elif opt in ('-e', '--extension'):
         extno = int(arg)
       elif opt in ('-k', '--PSF_Kron'):
-        PSF_Kron = int(arg)
+        PSF_Kron = float(arg)
       elif opt in ('-i', '--ignoreWarnings'):
         ignoreWarns = arg
     imageArray = np.array([ia.replace('.fits', '')
