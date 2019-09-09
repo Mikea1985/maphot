@@ -141,7 +141,7 @@ def trimCatalog(cat, somedata, dcut, mcut, snrcut, shapecut, naxis1, naxis2,
       b = int(cat['YWIN_IMAGE'][ii])
       m = np.max(somedata[b - 4:b + 5, a - 4:a + 5])
     except:
-      pass
+      m = 666 * mcut  # If try fails, is because source too near edge
     xi = cat['XWIN_IMAGE'][ii]
     yi = cat['YWIN_IMAGE'][ii]
     distance = np.sort(((cat['XWIN_IMAGE'] - xi) ** 2 +
