@@ -257,6 +257,18 @@ def calcRadius(WCS, NAXIS1, NAXIS2):
   return dmax, centRA, centDec
 
 
+def fixRADec(catalogueArray, imageArray, extno=None, verbose=False):
+  '''Because SExtractor is incompetent sometimes.'''
+  for i, im in enumerate(imageArray):
+    (_, _, _, _, _, _, _, _, _, WCS, _, _
+     ) = getDataHeader(im + '.fits', extno=extno, verbose=verbose)
+    rac, decc = WCS.all_pix2world(catalogueArray[i]['XWIN_IMAGE'],
+                                  catalogueArray[i]['YWIN_IMAGE'], 1)
+    (catalogueArray[i]['X_WORLD'], catalogueArray[i]['Y_WORLD']
+     ) = (rac, decc)
+  return catalogueArray
+
+
 def best(imageArray, repfactor, **kwargs):
   """This function can be run to do all of the above.
   This is called automatically if this is main."""
@@ -282,6 +294,9 @@ def best(imageArray, repfactor, **kwargs):
   (bestData, _, _, _, _, MJDm, _, NAXIS1, NAXIS2, WCS, _, INS
    ) = getDataHeader(imageArray[bestID] + '.fits', extno=extno,
                      verbose=verbose)
+  if 'LBC' in INS:
+    catalogueArray = fixRADec(catalogueArray, imageArray,
+                              extno=extno, verbose=verbose)
   if INS == 'GMOS-N':
     mcut = 135000  # Near-saturation level for GMOS
   # Trim the SExtractor catalog. This automatically removes things near edge,
