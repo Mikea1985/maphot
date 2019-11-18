@@ -250,7 +250,7 @@ for xcat, ycat in np.array(list(zip(catalog_phot['XWIN_IMAGE'],
            exptime=EXPTIME,
            zpt=MAGZERO, skyRadius=4 * fwhm, width=5 * fwhm,
            enableBGSelection=verbose, display=verbose, backupMode="smart",
-           trimBGHighPix=3., zscale=False)
+           trimBGHighPix=3.)
   starPhot.SNR(gain=GAIN, useBGstd=True)
   starPhotInst = starPhot.magnitude - starAperCorr
   dstarPhotInst = (starPhot.dmagnitude ** 2 + dAperCorr ** 2) ** 0.5
@@ -278,7 +278,7 @@ TNOPhot(xUse, yUse, radius=fwhm * tnoAperRad,
         l=ltno, a=atno, skyRadius=4 * fwhm, width=6 * fwhm,
         #zpt=26.0, exptime=EXPTIME, enableBGSelection=True, display=True,
         zpt=MAGZERO, exptime=EXPTIME, enableBGSelection=True, display=True,
-        backupMode="smart", trimBGHighPix=3., zscale=False)
+        backupMode="smart", trimBGHighPix=3.)
 TNOPhot.SNR(gain=GAIN, verbose=True, useBGstd=True)
 
 # Print those values
