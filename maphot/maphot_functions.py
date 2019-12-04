@@ -304,7 +304,7 @@ def getSExCatalog(imageFileName, SExParams, extno=None, verb=True):
 
 def runMCMCCentroid(centPSF, centData, centxt, centyt, centm,
                     centbg, centdtransx, centdtransy,
-                    repfact):
+                    repfact, tnotrack=False):
   """runMCMCCentroid runs an MCMC centroiding, fitting the TSF to the data.
   Returns the fitted centoid co-ordinates.
   """
@@ -314,7 +314,8 @@ def runMCMCCentroid(centPSF, centData, centxt, centyt, centm,
                              centdtransy + centyt,
                              m_in=centm / repfact ** 2.,
                              fitWidth=10, nWalkers=20,
-                             nBurn=20, nStep=30, bg=centbg, useLinePSF=True,
+                             nBurn=20, nStep=30, bg=centbg,
+                             useLinePSF=not(tnotrack),
                              verbose=False, useErrorMap=False)
   (centfitPars, centfitRange) = centfitter.fitResults(0.67)
 # Reverse the above coordinate transformation:
@@ -901,7 +902,7 @@ def findSharedPS1Catalogue(catalogueArray, **kwargs):
 
 def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
                    repfact=10, outfile=None, centroid=False, remove=False,
-                   filename=None):
+                   filename=None, tnotrack=False):
   ''' Choose between SExtractor position and predicted position.
   If desirable, use MCMC to fit the TSF to the object, thus centroiding on it.
   This is often NOT better than the SExtractor location, especially when the
@@ -939,10 +940,9 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
                'w+', ms=10, mew=2)
     if centroid or remove:
       print("Should I be doing this?")
-      xcent, ycent, fitPars, fitRange = runMCMCCentroid(goodPSF, Data, x0, y0,
-                                                        m_obj, 0,
-                                                        dtransx, dtransy,
-                                                        repfact)
+      (xcent, ycent, fitPars, fitRange
+       ) = runMCMCCentroid(goodPSF, Data, x0, y0, m_obj, 0, dtransx, dtransy,
+                           repfact, tnotrack=tnotrack)
       print("\nfitPars = ", fitPars, "\nfitRange = ", fitRange, "\n")
       if outfile is not None:
         outfile.write("\nfitPars={}".format(fitPars) +
@@ -1007,9 +1007,81 @@ def chooseCentroid(data, xt, yt, x0, y0, bg, goodPSF, NAXIS1, NAXIS2,
   return xt, yt, yn, fitPars
 
 
+def tst_fitting(goodPSF, Data, x_in, y_in, bg, repFact, tnotrack=False):
+  '''Test the various ways of fitting PSF.'''
+  if tnotrack:
+    m_in = goodPSF.repFact ** 2 * np.sum(Data) / np.sum(goodPSF.fullPSF)
+  else:
+    m_in = goodPSF.repFact ** 2 * np.sum(Data) / np.sum(goodPSF.longPSF)
+
+  fitter = MCMCfit.MCMCfitter(goodPSF, Data)
+  fitter.fitWithModelPSF(x_in, y_in, m_in=m_in, bg=bg,
+                         fitWidth=5, nWalkers=42, nBurn=10,
+                         nStep=42, useLinePSF=True, verbose=False,
+                         fitXY=True, fitM=True, fitXYM=True)
+  (fitPars111, fitRange) = fitter.fitResults(0.67)
+
+  fitter = MCMCfit.MCMCfitter(goodPSF, Data)
+  fitter.fitWithModelPSF(x_in, y_in, m_in=m_in, bg=bg,
+                         fitWidth=5, nWalkers=42, nBurn=10,
+                         nStep=42, useLinePSF=True, verbose=False,
+                         fitXY=False, fitM=True, fitXYM=True)
+  (fitPars011, fitRange) = fitter.fitResults(0.67)
+
+  fitter = MCMCfit.MCMCfitter(goodPSF, Data)
+  fitter.fitWithModelPSF(x_in, y_in, m_in=m_in, bg=bg,
+                         fitWidth=5, nWalkers=42, nBurn=10,
+                         nStep=42, useLinePSF=True, verbose=False,
+                         fitXY=True, fitM=False, fitXYM=True)
+  (fitPars101, fitRange) = fitter.fitResults(0.67)
+
+  fitter = MCMCfit.MCMCfitter(goodPSF, Data)
+  fitter.fitWithModelPSF(x_in, y_in, m_in=m_in, bg=bg,
+                         fitWidth=5, nWalkers=42, nBurn=10,
+                         nStep=42, useLinePSF=True, verbose=False,
+                         fitXY=True, fitM=True, fitXYM=False)
+  (fitPars110, fitRange) = fitter.fitResults(0.67)
+
+  fitter = MCMCfit.MCMCfitter(goodPSF, Data)
+  fitter.fitWithModelPSF(x_in, y_in, m_in=m_in, bg=bg,
+                         fitWidth=5, nWalkers=42, nBurn=10,
+                         nStep=42, useLinePSF=True, verbose=False,
+                         fitXY=False, fitM=False, fitXYM=True)
+  (fitPars001, fitRange) = fitter.fitResults(0.67)
+
+  fitter = MCMCfit.MCMCfitter(goodPSF, Data)
+  fitter.fitWithModelPSF(x_in, y_in, m_in=m_in, bg=bg,
+                         fitWidth=5, nWalkers=42, nBurn=10,
+                         nStep=42, useLinePSF=True, verbose=False,
+                         fitXY=False, fitM=True, fitXYM=False)
+  (fitPars010, fitRange) = fitter.fitResults(0.67)
+
+  fitter = MCMCfit.MCMCfitter(goodPSF, Data)
+  fitter.fitWithModelPSF(x_in, y_in, m_in=m_in, bg=bg,
+                         fitWidth=5, nWalkers=42, nBurn=10,
+                         nStep=42, useLinePSF=True, verbose=False,
+                         fitXY=True, fitM=False, fitXYM=False)
+  (fitPars100, fitRange) = fitter.fitResults(0.67)
+
+  fitter = MCMCfit.LSfitter(goodPSF, Data)
+  fitPars000 = fitter.fitWithModelPSF(x_in, y_in, m_in=m_in,
+                                      fitWidth=5, bg=bg,
+                                      useLinePSF=True, verbose=False)
+
+  print('111', fitPars111)
+  print('011', fitPars011)
+  print('101', fitPars101)
+  print('110', fitPars110)
+  print('001', fitPars001)
+  print('010', fitPars010)
+  print('100', fitPars100)
+  print('000', fitPars000)
+  print(x_in, y_in, m_in)
+
+
 def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
               outfile=None, repfact=10, remove=True, verbose=False,
-              fitPars=None):
+              fitPars=None, tnotrack=False):
   '''Remove a TSF.
   If remove=False, will not remove, just saves postage-stamp around xt, yt.'''
   Data = (data[np.max([0, int(yt) - 200]):np.min([NAXIS2 - 1, int(yt) + 200]),
@@ -1028,7 +1100,7 @@ def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
     fitter.fitWithModelPSF(dtransx + xt, dtransy + yt,
                            m_in=m_obj / repfact ** 2.,
                            fitWidth=10, nWalkers=20,
-                           nBurn=20, nStep=20, bg=0, useLinePSF=True,
+                           nBurn=20, nStep=20, bg=0, useLinePSF=not(tnotrack),
                            verbose=False, useErrorMap=False)
     (fitPars, fitRange) = fitter.fitResults(0.67)
     print("\nfitPars = ", fitPars, "\n")
@@ -1038,12 +1110,12 @@ def removeTSF(data, xt, yt, bg, goodPSF, NAXIS1, NAXIS2, header, inputName,
       outfile.write("\nfitRange={}".format(fitRange))
   if fitPars is not None:
     removed = goodPSF.remove(fitPars[0], fitPars[1], fitPars[2],
-                             Data, useLinePSF=True)
+                             Data, useLinePSF=not(tnotrack))
     zscale = ZScaleInterval()
     (z1, z2) = zscale.get_limits(removed)
     normer = interval.ManualInterval(z1, z2)
     modelImage = goodPSF.plant(fitPars[0], fitPars[1], fitPars[2], Data,
-                               addNoise=False, useLinePSF=True,
+                               addNoise=False, useLinePSF=not(tnotrack),
                                returnModel=True)
     if verbose:
       pyl.imshow(normer(goodPSF.lookupTable), origin='lower')
