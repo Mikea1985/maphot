@@ -267,7 +267,8 @@ for xcat, ycat in np.array(list(zip(catalog_phot['XWIN_IMAGE'],
 (xUse, yUse, centroidUsed, fitPars
  ) = chooseCentroid(data, xUse, yUse, xPred, yPred, np.median(bgStars),
                     goodPSF, NAXIS1, NAXIS2, outfile=outfile, repfact=repfact,
-                    centroid=centroid, remove=remove, filename=inputFile)
+                    centroid=centroid, remove=remove, filename=inputFile,
+                    tnotrack=tnotrack)
 
 print('\nPhotometry of moving object')
 outfile.write("\nPhotometry of moving object\n")
@@ -374,14 +375,13 @@ saveStarMag(inputFile, finalCat, timeNow, __version__,
 
 # You could stop here.
 # However, to confirm that things are working well,
-# let's generate the trailed PSF and subtract the object out of the image.
-#if centroid and (('e' in centroidUsed) or ('E' in centroidUsed) or
+# let's generate the trailed PSF and subtract the object out of the image.  #if centroid and (('e' in centroidUsed) or ('E' in centroidUsed) or
 #                 ('s' in centroidUsed) or ('S' in centroidUsed)):
 #  remove = True
 
 removeTSF(data, xUse, yUse, TNOPhot.bg, goodPSF, NAXIS1, NAXIS2, header,
           inputName, outfile=outfile, repfact=repfact, remove=remove,
-          fitPars=fitPars)
+          fitPars=fitPars, tnotrack=tnotrack)
 
 #Run function to save photometry in MPC format
 pix2MPC(WCS, EXPTIME, MJD, np.nanmean(finalTNOphotPS1[0]),
