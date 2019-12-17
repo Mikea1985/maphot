@@ -347,7 +347,9 @@ def best(imageArray, repfactor, **kwargs):
     pass
   inspectedPS1Cat = findSharedPS1Catalogue([PS1SharedCat, inspectedSExCat])
   saveStarMag('InspectedStars.txt', inspectedPS1Cat,
-              timeNow, __version__, 'All images', None, extno=extno)
+              timeNow, __version__,
+              '{0} ({1}.fits)'.format(MJDm, imageArray[bestID]),
+              None, extno=extno)
   print('{}'.format(len(inspectedPS1Cat)) +
         ' PS1 sources left after manual inspection.')
   bestCatName = ('best.cat' if extno is None
