@@ -682,7 +682,7 @@ def addPhotToCatalog(X, Y, catTable, photDict):
   print(photDictArgs)
   bestCat = catTable[tableArgs]
   bestCat.add_columns([Column(photDict[key][photDictArgs], key)
-                       for key in np.sort(photDict.keys())])
+                       for key in np.sort(list(photDict.keys()))])
   return bestCat
 
 
